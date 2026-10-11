@@ -1,4 +1,4 @@
 {
-  "operation": "check_configuration",
-  "revision": 2
+  "operation": "upload_testflight",
+  "revision": 3
 }
