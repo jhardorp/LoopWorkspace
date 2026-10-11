@@ -75,3 +75,5 @@ Manual checks for the separately authorized owner trial:
 ## Provider boundary
 
 `FoodEstimating.estimate(photo:)` is injectable. `BackendFoodEstimator` rejects demo input, expired auth and invalid photos before upload. Its ephemeral bounded `URLSession` refuses redirects and disables cookies/disk cache. The backend validates strict model JSON; the iPhone validates the versioned response and every estimate again before creating a `ReviewDraft`. Cancellation/request identifiers prevent old replies restoring an abandoned review. The only finish outcome is an in-memory flag.
+
+Backend checks also passed on GitHub in [validate-only run 38174675553](https://github.com/jhardorp/LoopWorkspace/actions/runs/38174675553), without server credentials, deployment or paid provider requests.
