@@ -38,6 +38,8 @@ https://loop-plus-meal-review.YOUR-SUBDOMAIN.workers.dev
 
 A health check verifies configuration, not paid OpenAI access or accuracy. Deployment never analyzes a photo or buys credits. The initial request is `validate_only`; ordinary source commits do not publish. If disabled, enable only this separate workflow and push a new request revision.
 
+The separate `check_configuration` operation reports which of the four Actions secrets are present and checks their basic formats. It prints names/status only, makes no provider/Cloudflare request and does not publish. This can locate a missing secret without granting the assistant access to secret values. A successful status check does not prove the credentials have access to the provider accounts.
+
 ## 5. Update Loop+ and try one photo
 
 When the separate **0.2.0** upload is confirmed and Apple processing finishes, update **Loop+** in TestFlight. Keep the original Loop app separate.

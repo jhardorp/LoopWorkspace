@@ -1,4 +1,4 @@
 {
-  "operation": "validate_only",
-  "revision": 1
+  "operation": "check_configuration",
+  "revision": 2
 }
