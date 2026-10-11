@@ -1,0 +1,29 @@
+name: Food recognition prototype checks
+
+on:
+  pull_request:
+    paths:
+      - 'Prototypes/AIFoodRecognition/**'
+      - '.github/workflows/food_recognition_prototype.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prototype:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test dependency-free core
+        working-directory: Prototypes/AIFoodRecognition
+        run: swift test
+      - name: Compile standalone iPhone UI without signing or installation
+        run: >-
+          xcodebuild
+          -project Prototypes/AIFoodRecognition/PrototypeApp/FoodRecognitionPrototype.xcodeproj
+          -scheme FoodRecognitionPrototype
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/FoodRecognitionPrototypeDerivedData"
+          CODE_SIGNING_ALLOWED=NO build

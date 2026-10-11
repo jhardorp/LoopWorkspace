@@ -43,3 +43,7 @@ Select the LoopConfigOverride file in Xcode's project navigator, uncomment the `
 ### Build
 
 Select the "LoopWorkspace" scheme (not the "Loop" scheme) and Build, Run, or Test.
+
+### Standalone food recognition prototype
+
+The [mock food recognition prototype](Prototypes/AIFoodRecognition/README.md) has a separate Xcode project, camera flow, and editable review screen. It is disconnected from Loop therapy and uses fictional estimates. See the [repository inspection and real AI integration plan](docs/ai-food-recognition.md) for the version findings and future fork requirements.
