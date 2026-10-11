@@ -53,3 +53,7 @@ Apple must process the uploaded build before it can be tested; timing is outside
 Then open TestFlight on your iPhone and install **Loop+**, alongside Loop. This is a separate installation; do not replace Loop. Test camera permission/capture/cancel, editable carb grams and absorption minutes, uncertainty acknowledgment, and the simulated failures. In Mock demo, every photo uses the selected fictional fixture. In 0.2.0 OpenAI mode, connect to the configured backend and confirm each upload. Nothing is saved to Loop or used for insulin therapy.
 
 The workflow does not invite testers or install anything automatically. A completed GitHub build is not proof that the app is already visible in TestFlight; upload, Apple processing, and internal tester access are separate states.
+
+## 0.2.0 AI connection update
+
+The updated Swift/backend/Ruby tests and unsigned iPhone build passed in [run 38175329086](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175329086). Distribution request revision 6 starts the authorized separate 0.2.0 build/upload. This records a request, not a confirmed upload or processed Apple build. Real photo analysis also needs the owner-configured backend and API credits described in the setup guide.
