@@ -1,0 +1,120 @@
+require 'base64'
+require_relative '../settings'
+
+default_platform(:ios)
+
+platform :ios do
+  private_lane :prototype_configuration do
+    begin
+      PrototypeDistribution.validate_environment(ENV)
+    rescue ArgumentError => error
+      UI.user_error!(error.message)
+    end
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch('FASTLANE_KEY_ID'),
+      issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
+      key_content: ENV.fetch('FASTLANE_KEY')
+    )
+    {
+      api_key: api_key,
+      bundle_id: PrototypeDistribution::BUNDLE_ID,
+      team_id: ENV.fetch('TEAMID'),
+      project: File.join(ENV.fetch('GITHUB_WORKSPACE'), 'Prototypes/AIFoodRecognition/PrototypeApp/FoodRecognitionPrototype.xcodeproj'),
+      artifacts: File.join(ENV.fetch('RUNNER_TEMP'), 'FoodRecognitionPrototypeArtifacts')
+    }
+  end
+
+  private_lane :register_prototype_bundle do |options|
+    identifier = options.fetch(:bundle_id)
+    bundle = Spaceship::ConnectAPI::BundleId.find(identifier)
+    unless bundle
+      Spaceship::ConnectAPI::BundleId.create(name: 'Food Review Demo', identifier: identifier, platform: 'IOS')
+    end
+    UI.success("Separate prototype bundle is registered: #{identifier}")
+  end
+
+  private_lane :build_prototype do |options|
+    configuration = options.fetch(:configuration)
+    setup_ci
+    authorization = Base64.strict_encode64("#{ENV.fetch('GITHUB_REPOSITORY_OWNER')}:#{ENV.fetch('GH_PAT')}")
+    # Prevent fastlane summaries from exposing a transformed GitHub credential in CI logs.
+    puts "::add-mask::#{authorization}" if ENV['GITHUB_ACTIONS'] == 'true'
+    match(
+      type: 'appstore',
+      api_key: configuration.fetch(:api_key),
+      team_id: configuration.fetch(:team_id),
+      git_url: 'https://github.com/jhardorp/Match-Secrets.git',
+      git_basic_authorization: authorization,
+      app_identifier: [configuration.fetch(:bundle_id)],
+      readonly: false
+    )
+    mapping = Actions.lane_context[SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING]
+    profile = mapping[configuration.fetch(:bundle_id)]
+    UI.user_error!('No provisioning profile for the prototype bundle') if profile.to_s.empty?
+    update_code_signing_settings(
+      path: configuration.fetch(:project),
+      use_automatic_signing: false,
+      team_id: configuration.fetch(:team_id),
+      bundle_identifier: configuration.fetch(:bundle_id),
+      code_sign_identity: 'Apple Distribution',
+      profile_name: profile,
+      targets: ['FoodRecognitionPrototype']
+    )
+    increment_build_number(xcodeproj: configuration.fetch(:project), build_number: options.fetch(:build_number))
+    gym(
+      project: configuration.fetch(:project),
+      scheme: 'FoodRecognitionPrototype',
+      configuration: 'Release',
+      clean: true,
+      destination: 'generic/platform=iOS',
+      export_method: 'app-store',
+      export_team_id: configuration.fetch(:team_id),
+      export_options: {
+        signingStyle: 'manual',
+        provisioningProfiles: { configuration.fetch(:bundle_id) => profile }
+      },
+      output_directory: configuration.fetch(:artifacts),
+      output_name: 'FoodRecognitionPrototype.ipa',
+      buildlog_path: File.join(configuration.fetch(:artifacts), 'logs')
+    )
+  end
+
+  desc 'Read-only credential/account check; does not register, sign, or upload'
+  lane :check_configuration do
+    configuration = prototype_configuration
+    app = Spaceship::ConnectAPI::App.find(configuration.fetch(:bundle_id))
+    UI.success(app ? 'The separate prototype app record exists.' : "Create a separate iOS app record in App Store Connect for #{configuration.fetch(:bundle_id)} after registering its identifier.")
+  end
+
+  desc 'Register only the prototype bundle, prepare its signing, and build without upload'
+  lane :prepare_signed_build do
+    configuration = prototype_configuration
+    register_prototype_bundle(configuration)
+    build_prototype(configuration: configuration, build_number: ENV.fetch('GITHUB_RUN_NUMBER'))
+  end
+
+  desc 'Build and upload only the separate prototype to TestFlight'
+  lane :upload_testflight do
+    configuration = prototype_configuration
+    register_prototype_bundle(configuration)
+    app = Spaceship::ConnectAPI::App.find(configuration.fetch(:bundle_id))
+    unless app
+      UI.user_error!("APP_RECORD_REQUIRED: In App Store Connect > My Apps > + > New App, create an iOS app using bundle ID #{configuration.fetch(:bundle_id)}, name Food Review Demo (jhardorp), and SKU food-recognition-prototype. Then retry this prototype request. No upload has occurred.")
+    end
+    build_number = latest_testflight_build_number(
+      app_identifier: configuration.fetch(:bundle_id),
+      api_key: configuration.fetch(:api_key),
+      initial_build_number: 0
+    ) + 1
+    ipa = build_prototype(configuration: configuration, build_number: build_number)
+    upload_to_testflight(
+      api_key: configuration.fetch(:api_key),
+      app_identifier: configuration.fetch(:bundle_id),
+      ipa: ipa,
+      skip_waiting_for_build_processing: true,
+      skip_submission: true,
+      distribute_external: false
+    )
+    UI.success('Prototype uploaded. Apple processing and internal tester selection are separate steps; Loop was not uploaded.')
+  end
+end

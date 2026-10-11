@@ -23,7 +23,9 @@ The photo is not analyzed. Every photo returns the selected fictional fixture. T
 
 ## Review and verification
 
-On a Mac with Xcode 15 or newer, open `PrototypeApp/FoodRecognitionPrototype.xcodeproj` independently of `LoopWorkspace.xcworkspace`. The shared scheme is `FoodRecognitionPrototype`. This work was not deployed, installed, merged, or submitted to TestFlight.
+For the separately authorized iPhone trial without a Mac, see [TestFlight setup](TESTFLIGHT.md). That workflow uses a separate app identifier and requires its own App Store Connect app record. The unsigned PR checks below remain separate from distribution.
+
+On a Mac with Xcode 15 or newer, open `PrototypeApp/FoodRecognitionPrototype.xcodeproj` independently of `LoopWorkspace.xcworkspace`. The shared scheme is `FoodRecognitionPrototype`. The initial prototype was not deployed, installed, merged, or submitted to TestFlight. The owner subsequently authorized a separate prototype TestFlight upload; its setup and upload status are handled by the separate distribution workflow. Nothing is merged into main or installed automatically.
 
 Run core tests without signing, devices, or submodules:
 

@@ -18,6 +18,10 @@ jobs:
       - name: Test dependency-free core
         working-directory: Prototypes/AIFoodRecognition
         run: swift test
+      - name: Test prototype distribution guards and Ruby syntax
+        run: |
+          ruby Prototypes/AIFoodRecognition/Distribution/settings_test.rb
+          ruby -c Prototypes/AIFoodRecognition/Distribution/fastlane/Fastfile
       - name: Compile standalone iPhone UI without signing or installation
         run: >-
           xcodebuild
