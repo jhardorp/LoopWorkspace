@@ -40,6 +40,8 @@ On your iPhone or any computer:
 
 The optional **Run workflow** button may not be available while this new workflow exists only on the feature branch: GitHub normally requires manual-dispatch workflows on the default branch. Editing the request file is the supported route here and preserves `main`.
 
+If a request-file push starts no run, check whether the [separate prototype workflow](https://github.com/jhardorp/LoopWorkspace/actions/workflows/food_recognition_testflight.yml) is disabled. Enable that workflow, then commit a new request revision on the feature branch. This does not require enabling or running Loop's release workflows.
+
 ## Install after a successful upload
 
 Apple must process the uploaded build before it can be tested; timing is outside this workflow's control. Open the prototype's **TestFlight** tab in App Store Connect, create/select an **internal testing** group, add your own tester account, and select the processed prototype build. Resolve any Apple account or export-compliance prompts. External testing is not automatically enabled or submitted for Beta App Review.

@@ -9,7 +9,7 @@ The photo is not analyzed. Every photo returns the selected fictional fixture. T
 - No Loop, LoopKit, HealthKit, CGM, meal-history, pump, or therapy-store dependency.
 - No network requests, API credentials, analytics, file writes, photo-library saves, or persisted reviews.
 - “Finish demo review” only marks the current in-memory review complete. Editing a value clears that marker. It never creates a carb entry, calculates a bolus, or administers insulin.
-- Separate project, scheme, display name, and bundle identifier (`org.loopprototype.FoodRecognitionSandbox`). No change to the Loop workspace, signing configuration, version, submodule pins, or deployment workflows.
+- Separate project, scheme, and display name. Unsigned local builds use `org.loopprototype.FoodRecognitionSandbox`; the separate TestFlight lane signs only `com.jhardorp.foodrecognitionprototype`. No change to the Loop workspace, signing configuration, version, submodule pins, or deployment workflows.
 - A photo is redrawn to a maximum 1280-pixel dimension and encoded as JPEG without original EXIF metadata. Discard, a new request, and entering the background clear the current review/photo. Camera capture cancellation discards the capture.
 
 ## Files
@@ -48,7 +48,7 @@ xcodebuild \
 
 The prototype-only PR workflow runs `swift test` and an unsigned simulator **build**, with no simulator launch, installation, archive, deployment, or secrets. It does not invoke Loop's build/release workflows.
 
-Local validation on 2026-10-11: 16 XCTest tests passed using Swift 6.0.3 on Linux with container networking disabled. Xcode/UIKit/SwiftUI compilation and visual/device checks were unavailable locally. Check the PR's macOS build result before treating the app target as verified.
+Validation on 2026-10-11: 16 XCTest tests passed using Swift 6.0.3 on Linux with container networking disabled and on GitHub's macOS runner. The unsigned iPhone simulator build, four Ruby configuration guard tests, and Fastfile syntax checks also passed on macOS. Physical camera, visual, and accessibility checks remain pending.
 
 Manual UI checks for a later, explicitly authorized simulator/device review:
 
