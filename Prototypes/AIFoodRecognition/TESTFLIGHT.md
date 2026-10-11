@@ -2,11 +2,13 @@
 
 The owner has an Apple Developer account and has explicitly authorized a separate prototype TestFlight upload. This is **Loop+**, with bundle ID **`com.jhardorp.foodrecognitionprototype`**. It does not replace or update the existing Loop app. Recognition remains mock-only.
 
+**Confirmed upload on 2026-10-11:** [workflow run 38158512784](https://github.com/jhardorp/LoopWorkspace/actions/runs/38158512784) passed and App Store Connect accepted the prototype binary. The project version is **0.1.0**, build **1**. Apple processing and internal tester access were not verified by that upload lane; follow the installation steps below once the build is available.
+
 ## What runs on GitHub
 
 The `Separate food prototype TestFlight` workflow runs on a GitHub-hosted Mac from **`feature/ai-food-recognition`**, without merging to `main`. It uses a separate Fastfile and the standalone project. It never checks out the Loop submodules or calls Loop's build/release/certificate-renewal lanes.
 
-Only an explicit change to `Distribution/request.json` triggers the workflow through a branch push. Ordinary source commits and pull requests do not upload. The separate bundle and App Store Connect app record now exist. The current request is an authorized `upload_testflight` attempt; check its workflow result to confirm whether Apple accepted an upload. Allowed operations are:
+Only an explicit change to `Distribution/request.json` triggers the workflow through a branch push. Ordinary source commits and pull requests do not upload. The separate bundle and App Store Connect app record now exist. The current request records the authorized `upload_testflight` operation that succeeded in the run linked above. Another request revision triggers another build/upload. Allowed operations are:
 
 | Operation | Effect |
 | --- | --- |
