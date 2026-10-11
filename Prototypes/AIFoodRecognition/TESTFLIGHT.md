@@ -1,6 +1,6 @@
 # Test the separate prototype without a Mac
 
-The owner has an Apple Developer account and has explicitly authorized a separate prototype TestFlight upload. This is **Loop+**, with bundle ID **`com.jhardorp.foodrecognitionprototype`**. It does not replace or update the existing Loop app. Recognition remains mock-only.
+The owner has an Apple Developer account and has explicitly authorized a separate prototype TestFlight upload. This is **Loop+**, with bundle ID **`com.jhardorp.foodrecognitionprototype`**. It does not replace or update the existing Loop app. The installed 0.1.0 build is mock-only. The 0.2.0 source adds opt-in OpenAI analysis, which requires [backend setup](Backend/SETUP.md) before real photos can be analyzed.
 
 **Confirmed upload on 2026-10-11:** [workflow run 38158512784](https://github.com/jhardorp/LoopWorkspace/actions/runs/38158512784) passed and App Store Connect accepted the prototype binary. The project version is **0.1.0**, build **1**. Apple processing and internal tester access were not verified by that upload lane; follow the installation steps below once the build is available.
 
@@ -18,7 +18,7 @@ Only an explicit change to `Distribution/request.json` triggers the workflow thr
 | `prepare_signed_build` | Register the separate bundle if missing, prepare its provisioning profile, and build a signed IPA without upload |
 | `upload_testflight` | Register the bundle if missing, require its App Store Connect app record, sign/build, and upload only the prototype |
 
-The workflow validates the core and configuration guards before signing. It selects an installed Xcode 26 or newer for current Apple uploads. Signing reuses the account's existing encrypted `jhardorp/Match-Secrets` storage and available distribution certificate; it may add the prototype's provisioning profile. It never invokes certificate revocation or renewal. The repository's `main`, Loop submodule pins, existing Loop signing configuration, and installed app are unchanged. A missing certificate, authorization, secret, or unsupported runner causes a failure rather than changing Loop's setup.
+The workflow validates the Swift core, backend contract/dry run and configuration guards before signing. It never deploys the backend or passes OpenAI/Cloudflare keys to the app build. It selects an installed Xcode 26 or newer for current Apple uploads. Signing reuses the account's existing encrypted `jhardorp/Match-Secrets` storage and available distribution certificate; it may add the prototype's provisioning profile. It never invokes certificate revocation or renewal. The repository's `main`, Loop submodule pins, existing Loop signing configuration, and installed app are unchanged. A missing certificate, authorization, secret, or unsupported runner causes a failure rather than changing Loop's setup.
 
 ## Existing secrets required
 
@@ -50,6 +50,6 @@ If a request-file push starts no run, check whether the [separate prototype work
 
 Apple must process the uploaded build before it can be tested; timing is outside this workflow's control. Open the prototype's **TestFlight** tab in App Store Connect, create/select an **internal testing** group, add your own tester account, and select the processed prototype build. Resolve any Apple account or export-compliance prompts. External testing is not automatically enabled or submitted for Beta App Review.
 
-Then open TestFlight on your iPhone and install **Loop+**, alongside Loop. This is a separate installation; do not replace Loop. Test camera permission/capture/cancel, editable carb grams and absorption minutes, uncertainty acknowledgment, and the simulated failures. Every photo uses the selected fictional fixture. Nothing is saved to Loop or used for insulin therapy.
+Then open TestFlight on your iPhone and install **Loop+**, alongside Loop. This is a separate installation; do not replace Loop. Test camera permission/capture/cancel, editable carb grams and absorption minutes, uncertainty acknowledgment, and the simulated failures. In Mock demo, every photo uses the selected fictional fixture. In 0.2.0 OpenAI mode, connect to the configured backend and confirm each upload. Nothing is saved to Loop or used for insulin therapy.
 
 The workflow does not invite testers or install anything automatically. A completed GitHub build is not proof that the app is already visible in TestFlight; upload, Apple processing, and internal tester access are separate states.

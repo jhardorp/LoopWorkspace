@@ -1,0 +1,72 @@
+# Enable real photo analysis without a Mac
+
+The owner selected OpenAI, accepted small per-photo API charges and requested no additional monthly subscription. This setup uses **OpenAI prepaid API credits** and **Cloudflare Workers Free**, with a SQLite Durable Object for request counters. It does not buy a subscription or upgrade a hosting plan. ChatGPT subscription billing does not cover API use.
+
+Source and tests are prepared; **no live backend or paid model call is confirmed yet**. The assistant can prepare builds and start GitHub jobs; the owner must create provider credentials in their own browser. Never paste keys/access codes into chat, issues or source files. They never belong in the iPhone app.
+
+## 1. OpenAI credits and key
+
+1. Open [OpenAI API billing](https://platform.openai.com/settings/organization/billing/overview) in Safari and log in.
+2. Add a small prepaid balance using the amount/minimum offered by OpenAI. **Leave automatic recharge off**. Project budget alerts are not necessarily hard spending caps, and prepaid metering can be delayed; do not assume an instant cutoff at the displayed balance.
+3. Open [project API keys](https://platform.openai.com/api-keys), select your project and create a secret key with permission to create Responses for the configured model. Keep its one-time value private.
+4. Open [GitHub Actions secrets](https://github.com/jhardorp/LoopWorkspace/settings/secrets/actions), tap **New repository secret**, name it **`FOOD_OPENAI_API_KEY`**, paste the API key as its value and save. The separate deployment job transfers it to server secret storage.
+
+## 2. Free Cloudflare account and credentials
+
+1. Open [Cloudflare's dashboard](https://dash.cloudflare.com/) and create/log into your account. Use **Workers Free**; no custom domain or monthly hosting subscription is needed. Do not purchase an upgrade for this setup if prompted.
+2. In **Workers & Pages**, complete the free `workers.dev` subdomain setup if prompted. The app will use this HTTPS address.
+3. Copy the selected account's **Account ID** (32 characters) and save it in GitHub Actions secrets as **`CLOUDFLARE_ACCOUNT_ID`**.
+4. Open [API tokens](https://dash.cloudflare.com/profile/api-tokens), choose **Create Token → Edit Cloudflare Workers** and restrict account resources to this account. Keep the template's Worker deployment permissions, including scripts, account/subdomain settings and Durable Objects where applicable. No custom DNS zone is needed. Store the private token as **`CLOUDFLARE_API_TOKEN`** in GitHub Actions secrets.
+
+These credentials are used only by the separate backend workflow. Existing Apple/Loop signing secrets stay unchanged. Fix a deployment permission error on this restricted token rather than placing a Cloudflare global API key in the app.
+
+## 3. Separate tester code
+
+Use your password manager to generate a new random password of at least **32 characters**, without spaces. It must differ from your OpenAI key/Apple password. Save it privately for iPhone login and add it to GitHub Actions secrets as **`FOOD_TESTER_ACCESS_CODE`**.
+
+The backend exchanges this code for a **30-minute token**. Only that token and URL are saved in Loop+'s own device-only Keychain; the code is not compiled into or saved by the app. Rotating the server code revokes existing sessions. Its holder can spend the prototype's limited credits, so keep it private.
+
+## 4. Publish the prepared backend
+
+After these four secrets exist, tell the assistant **“The four AI secrets are saved.”** Include no values. The assistant can change `Backend/request.json` from `validate_only` to `deploy`, increase the revision and push only **`feature/ai-food-recognition`**. This starts [the separate backend workflow](https://github.com/jhardorp/LoopWorkspace/actions/workflows/food_recognition_backend.yml) without merging to `main`.
+
+Checks run first. The job publishes only **`loop-plus-meal-review`**, passes its two secrets to Wrangler through stdin, then verifies `/health`. The summary reports the HTTPS server address:
+
+```text
+https://loop-plus-meal-review.YOUR-SUBDOMAIN.workers.dev
+```
+
+A health check verifies configuration, not paid OpenAI access or accuracy. Deployment never analyzes a photo or buys credits. The initial request is `validate_only`; ordinary source commits do not publish. If disabled, enable only this separate workflow and push a new request revision.
+
+## 5. Update Loop+ and try one photo
+
+When the separate **0.2.0** upload is confirmed and Apple processing finishes, update **Loop+** in TestFlight. Keep the original Loop app separate.
+
+1. Select **OpenAI photo analysis**, paste the server URL from the workflow summary and enter your tester code. Tap **Connect to AI service**.
+2. Tap **Photograph meal**, photograph the actual meal with a portion reference and inspect the preview. Tap **Analyze this photo** only when you want this image uploaded to the backend/OpenAI.
+3. Review foods/portions, carbs and the **experimental** absorption duration. Edit both values and acknowledge uncertainty. Finishing/discarding stays entirely in this standalone review; nothing goes to Loop or calculates/delivers insulin.
+
+The first consented photo verifies live provider access. Tests use simulated replies and do not establish recognition accuracy. Nutrition is inferred rather than grounded in a verified database; weighing portions and checking recipes/labels remain necessary.
+
+## Cost, limits and privacy
+
+- **10 photos per UTC day** by default, shared across sessions, and **3 per minute**. Persistent SQLite counters serialize concurrent requests. `DAILY_PHOTO_LIMIT` can be lowered; values over 20 fail closed.
+- One provider request per accepted image, no automatic retry. JPEGs are capped at 1 MiB, replies at 256 KiB and output at 4,000 tokens. Charges follow [OpenAI API pricing](https://openai.com/api/pricing/) for the image-capable `gpt-4.1-2025-04-14` snapshot. Billing is based on tokens, not a fixed picture fee.
+- Accepted images consume quota even if the provider fails, times out, refuses or returns invalid JSON; some may still be billed. Cancellation cannot retract a received photo or guarantee a refund.
+- Workers Free and **SQLite** Durable Objects have free-tier limits; this configuration never upgrades the account automatically. If limits are reached the app reports failure. Counters store time windows/counts and salted login-IP digests, never photos, estimates, raw IPs or meal history.
+- The app/backend do not persist photos/reviews; Worker observability is disabled and application code logs no content/credentials. Network/provider services can still retain operational metadata under their policies.
+- OpenAI receives only the current normalized photo and fixed prompt, with no CGM, prior meals, insulin, profile or dosing data. `store: false` does not eliminate default abuse-monitoring retention (normally up to 30 days) or other policy-governed retention. Read [OpenAI's data controls](https://developers.openai.com/api/docs/guides/your-data) before consent.
+- Disable requests by revoking the OpenAI key/removing its Worker secret, rotating the tester code or deleting this separate Worker. No Loop/signing/dosing change is required.
+
+## Developer checks
+
+```sh
+npm ci
+npm run check
+npm test
+npx --no-install wrangler deploy --dry-run
+```
+
+Wrangler is pinned in `package-lock.json`. Tests stub paid calls and cover auth, expiry/revocation, bounds, validation, timeouts/errors and quota concurrency/reset. Credentials are unnecessary for these checks.
+
+References: [image input](https://developers.openai.com/api/docs/guides/images-vision), [structured output](https://developers.openai.com/api/docs/guides/structured-outputs), [separate API billing](https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform), [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/), [Durable Objects pricing/SQLite Free](https://developers.cloudflare.com/durable-objects/platform/pricing/).

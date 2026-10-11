@@ -10,6 +10,9 @@ struct FoodRecognitionView: View {
     @State private var cameraError: String?
     @State private var requestingCamera = false
     @State private var pendingImage: UIImage?
+    @State private var pendingUpload: UIImage?
+    @State private var showUploadConsent = false
+    @State private var uploadApproved = false
     @State private var manualCarbs = ""
     @State private var manualMinutes = "180"
     @State private var manualFood = ""
@@ -36,7 +39,11 @@ struct FoodRecognitionView: View {
         .fullScreenCover(isPresented: $showCamera, onDismiss: {
             if let image = pendingImage {
                 pendingImage = nil
-                model.analyze(image)
+                if model.mode == .openAI {
+                    pendingUpload = image
+                    uploadApproved = false
+                    showUploadConsent = true
+                } else { model.analyze(image) }
             }
         }) {
             MealCameraView(onCapture: { image in
@@ -52,25 +59,75 @@ struct FoodRecognitionView: View {
         } message: {
             Text(cameraError ?? "")
         }
+        .sheet(isPresented: $showUploadConsent, onDismiss: {
+            let image = pendingUpload
+            let approved = uploadApproved && scenePhase == .active && model.mode == .openAI
+            pendingUpload = nil
+            uploadApproved = false
+            if approved, let image { model.analyze(image, consentToUpload: true) }
+        }) {
+            uploadConfirmation
+        }
         .onChange(of: scenePhase) { phase in
             if phase == .background {
                 discard()
+                model.pause()
                 showCamera = false
             }
         }
     }
 
     private var title: String {
-        if case .reviewing = model.state { return "Review Meal · Demo" }
-        return "Add Carb Entry · Demo"
+        if case .reviewing = model.state { return model.mode == .demo ? "Review Meal · Demo" : "Review Meal · AI" }
+        return "Loop+ Meal Review"
+    }
+
+    private var uploadConfirmation: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if let image = pendingUpload {
+                        Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 280)
+                            .accessibilityLabel("Photo awaiting your upload confirmation")
+                    }
+                    Text("Send this photo for AI review?").font(.headline)
+                    Text("This photo goes through \(model.serverHost) to OpenAI and consumes API credits. The app and backend do not save it; OpenAI's data retention rules apply.")
+                    Text("Nutrition and absorption duration are uncertain estimates. Review portions and ingredients before editing the values.")
+                    Link("Read OpenAI's data policy", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
+                    Button("Analyze this photo") {
+                        uploadApproved = true
+                        showUploadConsent = false
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("confirmPhotoUpload")
+                }
+                .padding()
+            }
+            .navigationTitle("Photo upload")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel", role: .cancel) { showUploadConsent = false }
+                }
+            }
+        }
+        .navigationViewStyle(.stack)
     }
 
     private var entry: some View {
         Form {
             Section {
-                Text("Standalone prototype. Values and photos stay in memory. Nothing is saved or used for insulin therapy.")
+                Text("Separate Loop+ trial. Reviews stay in memory and are not used for insulin therapy. AI photo uploads require your confirmation.")
                     .foregroundColor(.secondary)
             }
+            Section("Recognition") {
+                Picker("Provider", selection: $model.mode) {
+                    Text("OpenAI photo analysis").tag(RecognitionMode.openAI)
+                    Text("Mock demo").tag(RecognitionMode.demo)
+                }
+                .disabled(model.state == .estimating || model.connecting)
+            }
+            if model.mode == .openAI { connection }
             Section("Carbohydrate entry preview") {
                 TextField("Amount consumed (g)", text: $manualCarbs).keyboardType(.decimalPad)
                 DatePicker("Time", selection: $mealTime)
@@ -80,9 +137,9 @@ struct FoodRecognitionView: View {
                     Label("Photograph meal", systemImage: "camera")
                 }
                 .accessibilityIdentifier("photographMeal")
-                .disabled(model.state == .estimating || requestingCamera)
+                .disabled(model.state == .estimating || requestingCamera || (model.mode == .openAI && !model.canUseAI))
             }
-            Section {
+            if model.mode == .demo { Section {
                 Picker("Demo result", selection: $model.scenario) {
                     ForEach(MockScenario.allCases, id: \.self) { scenario in
                         Text(scenarioTitle(scenario)).tag(scenario)
@@ -94,7 +151,7 @@ struct FoodRecognitionView: View {
                     .accessibilityIdentifier("useDemoMeal")
                 Text("Every photograph returns the selected fictional example. This prototype does not recognize food.")
                     .font(.footnote).foregroundColor(.secondary)
-            }
+            } }
             status
         }
     }
@@ -104,13 +161,13 @@ struct FoodRecognitionView: View {
         switch model.state {
         case .estimating:
             Section {
-                ProgressView("Preparing mock estimate…")
+                ProgressView(model.mode == .demo ? "Preparing mock estimate…" : "Analyzing current meal photo…")
                 Button("Cancel estimate", role: .cancel) { model.clear() }
             }
         case .failed(let error):
             Section("Estimate unavailable") {
-                Text(errorMessage(error))
-                Text("Retake the photo or use the demo button to retry. Your manual preview remains editable.")
+                Text(model.errorMessage(error))
+                Text("Retake the photo to retry. Your manual preview remains editable.")
                     .font(.footnote)
             }
         case .needsMoreInformation(let reason):
@@ -123,7 +180,7 @@ struct FoodRecognitionView: View {
     private func review(_ estimate: MealEstimate) -> some View {
         Form {
             Section {
-                Text("MOCK ESTIMATE — unrelated to your photo")
+                Text(model.mode == .demo ? "MOCK ESTIMATE — unrelated to your photo" : "AI estimate — verify portions and ingredients")
                     .font(.headline).foregroundColor(.orange)
                 Text("Review and edit the values. Finishing this review does not save an entry or calculate insulin.")
                 if let photo = model.photo {
@@ -131,7 +188,7 @@ struct FoodRecognitionView: View {
                         .accessibilityLabel("Current meal photograph")
                 }
             }
-            Section("Example foods and portions") {
+            Section(model.mode == .demo ? "Example foods and portions" : "Foods and estimated portions") {
                 ForEach(Array(estimate.foods.enumerated()), id: \.offset) { _, food in
                     VStack(alignment: .leading, spacing: 5) {
                         Text(food.name).font(.headline)
@@ -146,7 +203,11 @@ struct FoodRecognitionView: View {
             }
             Section("Estimates and uncertainty") {
                 Text("Total carbohydrates: \(quantity(estimate.carbohydrateGrams, unit: "g"))")
-                Text("Absorption duration: \(quantity(estimate.absorptionMinutes, unit: "min"))")
+                Text("\(model.mode == .demo ? "Absorption duration" : "Experimental absorption duration"): \(quantity(estimate.absorptionMinutes, unit: "min"))")
+                if model.mode == .openAI {
+                    Text("Nutrition is inferred from the photo, not checked against a nutrition database. Total carbohydrate includes fiber; check ingredients, portions and nutrition labels.")
+                        .font(.footnote).foregroundColor(.secondary)
+                }
                 Text(estimate.confidence == .low ? "Low confidence — confirm ingredients and portion size." : "Moderate confidence — manual verification required.")
                     .foregroundColor(.orange)
                 Text(estimate.absorptionRationale)
@@ -162,13 +223,13 @@ struct FoodRecognitionView: View {
                 Text("Enter 0–250 g and 30–480 minutes. These are prototype bounds, not recommended treatment values.")
                     .font(.footnote).foregroundColor(.secondary)
                 if estimate.confidence == .low {
-                    Toggle("I reviewed the uncertain portions and ingredients", isOn: model.binding(for: \.acknowledgesUncertainty, default: false))
+                    Toggle("I reviewed portions, ingredients and the duration estimate", isOn: model.binding(for: \.acknowledgesUncertainty, default: false))
                 }
-                Button("Finish demo review") { model.finishReview() }
+                Button(model.mode == .demo ? "Finish demo review" : "Finish review") { model.finishReview() }
                     .disabled(!(model.draft?.canFinish(estimate: estimate) ?? false))
                     .accessibilityIdentifier("finishReview")
                 if model.reviewFinished {
-                    Text("Review complete for this demo only. Nothing was saved or sent to Loop.")
+                    Text("Review complete. Nothing was saved or sent to Loop.")
                         .foregroundColor(.green)
                 }
                 Button("Discard photo and review", role: .destructive) { discard() }
@@ -190,6 +251,9 @@ struct FoodRecognitionView: View {
     private func discard() {
         model.clear()
         pendingImage = nil
+        pendingUpload = nil
+        uploadApproved = false
+        showUploadConsent = false
         manualCarbs = ""
         manualMinutes = "180"
         manualFood = ""
@@ -197,6 +261,10 @@ struct FoodRecognitionView: View {
     }
 
     private func openCamera() {
+        guard model.mode == .demo || model.canUseAI else {
+            cameraError = "Connect to the AI service before photographing a meal."
+            return
+        }
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
             cameraError = "This device has no available camera. Use the demo meal button in the simulator."
             return
@@ -230,12 +298,27 @@ struct FoodRecognitionView: View {
         }
     }
 
-    private func errorMessage(_ error: EstimationError) -> String {
-        switch error {
-        case .networkUnavailable: return "Simulated network failure. No estimate was produced."
-        case .timedOut: return "Simulated timeout. No estimate was produced."
-        case .invalidPhoto: return "The photo could not be prepared or exceeds the size limit."
-        case .invalidResponse: return "The estimate response was invalid and was discarded."
+    private var connection: some View {
+        Section("AI connection") {
+            if model.canUseAI {
+                Label("Connected to \(model.serverHost)", systemImage: "checkmark.circle")
+                if let expiry = model.sessionExpiry { Text("Login expires at \(expiry, style: .time).").font(.footnote) }
+                Button("Disconnect", role: .destructive) { model.disconnect() }
+            } else {
+                TextField("HTTPS server address", text: $model.serverAddress)
+                    .keyboardType(.URL).textInputAutocapitalization(.never).disableAutocorrection(true)
+                SecureField("Tester access code", text: $model.testerCode)
+                    .textInputAutocapitalization(.never).disableAutocorrection(true)
+                Text("Use the separate tester code. Your OpenAI API key belongs in server secret storage.")
+                    .font(.footnote).foregroundColor(.secondary)
+                Button("Connect to AI service") { model.connect() }.disabled(model.connecting)
+            }
+            if model.connecting { ProgressView("Connecting…") }
+            if let error = model.connectionError { Text(error).foregroundColor(.orange) }
+            Text("OpenAI requests consume API credits. The prototype backend allows up to 10 photos per day and 3 per minute. Failed provider requests also count; there are no automatic retries.")
+                .font(.footnote).foregroundColor(.secondary)
+            Link("OpenAI photo data policy", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
+                .font(.footnote)
         }
     }
 }

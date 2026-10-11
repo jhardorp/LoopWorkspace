@@ -48,6 +48,20 @@ jobs:
               output.write(f'operation={operation}\n')
           print(f'Operation: {operation}; bundle: com.jhardorp.foodrecognitionprototype')
           PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Prototypes/AIFoodRecognition/Backend/package-lock.json
+      - name: Verify backend contract before building the app
+        working-directory: Prototypes/AIFoodRecognition/Backend
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          npm ci
+          npm run check
+          npm test
+          npx --no-install wrangler deploy --dry-run --outdir "$RUNNER_TEMP/LoopPlusWorkerDryRun"
       - name: Check signing secret presence without showing values
         env:
           TEAMID: ${{ secrets.TEAMID }}

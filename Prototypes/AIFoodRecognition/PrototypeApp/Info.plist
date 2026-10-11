@@ -13,7 +13,7 @@
     <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
     <key>ITSAppUsesNonExemptEncryption</key><false/>
     <key>LSRequiresIPhoneOS</key><true/>
-    <key>NSCameraUsageDescription</key><string>Photograph a meal for a mock food review. Photos stay in memory and are not uploaded or saved.</string>
+    <key>NSCameraUsageDescription</key><string>Photograph a meal for review. AI mode sends only the current photo to your configured service and OpenAI after your confirmation. Demo mode keeps photos on this device.</string>
     <key>UIApplicationSceneManifest</key>
     <dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
     <key>UILaunchScreen</key><dict/>

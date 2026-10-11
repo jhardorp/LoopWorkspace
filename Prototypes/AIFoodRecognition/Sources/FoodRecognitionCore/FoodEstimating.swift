@@ -29,6 +29,7 @@ public enum EstimationOutcome: Equatable, Sendable {
 
 public enum EstimationError: Error, Equatable, Sendable {
     case networkUnavailable, timedOut, invalidResponse, invalidPhoto
+    case authenticationRequired, rateLimited, serviceUnavailable, invalidConfiguration, uploadConsentRequired
 }
 
 /// Receives only the current photo. No historical meals, glucose, or therapy dependencies.

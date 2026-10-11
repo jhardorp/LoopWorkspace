@@ -1,0 +1,73 @@
+name: Separate Loop+ meal review backend
+run-name: Separate Loop+ backend request (${{ github.ref_name }})
+
+on:
+  push:
+    branches: ['feature/ai-food-recognition']
+    paths: ['Prototypes/AIFoodRecognition/Backend/request.json']
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Validate locally or publish only the separate food review Worker
+        type: choice
+        options: [validate_only, deploy]
+        default: validate_only
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: separate-loop-plus-backend
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    if: github.ref == 'refs/heads/feature/ai-food-recognition'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Read explicit backend request
+        id: request
+        env:
+          DISPATCH_OPERATION: ${{ inputs.operation }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          request = json.loads(Path('Prototypes/AIFoodRecognition/Backend/request.json').read_text())
+          operation = os.environ.get('DISPATCH_OPERATION') or request.get('operation')
+          if operation not in {'validate_only', 'deploy'} or type(request.get('revision')) is not int or request['revision'] < 1:
+              raise SystemExit('Invalid explicit backend request')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'operation={operation}\n')
+          print(f'Operation: {operation}; Worker: loop-plus-meal-review')
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Prototypes/AIFoodRecognition/Backend/package-lock.json
+      - name: Install pinned tools and run backend checks
+        working-directory: Prototypes/AIFoodRecognition/Backend
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          npm ci
+          npm run check
+          npm test
+          npx --no-install wrangler deploy --dry-run --outdir "$RUNNER_TEMP/LoopPlusWorkerDryRun"
+      - name: Publish only the separate backend and store its secrets
+        if: steps.request.outputs.operation == 'deploy'
+        working-directory: Prototypes/AIFoodRecognition/Backend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FOOD_OPENAI_API_KEY: ${{ secrets.FOOD_OPENAI_API_KEY }}
+          FOOD_TESTER_ACCESS_CODE: ${{ secrets.FOOD_TESTER_ACCESS_CODE }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: node scripts/deploy.mjs

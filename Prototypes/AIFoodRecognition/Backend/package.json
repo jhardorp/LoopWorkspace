@@ -1,0 +1,15 @@
+{
+  "name": "loop-plus-meal-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/worker.test.js",
+    "check": "node --check src/worker.js && node --check src/contract.js && node --check src/auth.js && node --check scripts/deploy.mjs && node --check scripts/deployment-settings.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "wrangler": "4.149.0"
+  }
+}

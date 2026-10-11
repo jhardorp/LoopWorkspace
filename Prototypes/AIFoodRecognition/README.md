@@ -1,40 +1,54 @@
 # Loop+ food recognition prototype
 
-This is a standalone, mock-only iPhone app and a dependency-free Swift package. It previews a camera button beside the same input concepts as Loop's carbohydrate-entry screen, then displays editable carbohydrates and absorption duration. It does **not** add that button to the installed Loop app or wire the prototype into Loop's existing screen. That is a subsequent integration step.
+Loop+ is a **separate iPhone meal-review app**, not a modified Loop installation. Version 0.1.0 (1) was uploaded to TestFlight and installed by the owner. The 0.2.0 source adds opt-in OpenAI photo analysis through an authenticated, owner-controlled backend and retains the explicitly labeled mock demo. Live AI requires configured backend credentials and API credits; compiling the app alone cannot enable it.
 
-The photo is not analyzed. Every photo returns the selected fictional fixture. The examples demonstrate portions, nutritional composition, uncertainty ranges, and absorption rationale; their values and durations are not clinically validated.
+The preview mirrors amount, time, food type and absorption duration from Loop's carbohydrate-entry screen. It does **not** yet add a camera button to Loop's actual screen. See [repository inspection and fork decision](../../docs/ai-food-recognition.md).
 
 ## Scope and isolation
 
-- No Loop, LoopKit, HealthKit, CGM, meal-history, pump, or therapy-store dependency.
-- No network requests, API credentials, analytics, file writes, photo-library saves, or persisted reviews.
-- “Finish demo review” only marks the current in-memory review complete. Editing a value clears that marker. It never creates a carb entry, calculates a bolus, or administers insulin.
-- Separate project, scheme, and display name. Unsigned local builds use `org.loopprototype.FoodRecognitionSandbox`; the separate TestFlight lane signs only `com.jhardorp.foodrecognitionprototype`. No change to the Loop workspace, signing configuration, version, submodule pins, or deployment workflows.
-- A photo is redrawn to a maximum 1280-pixel dimension and encoded as JPEG without original EXIF metadata. Discard, a new request, and entering the background clear the current review/photo. Camera capture cancellation discards the capture.
+- No Loop, LoopKit, HealthKit, CGM, historical meal, insulin, pump or therapy-store dependency. No dosing-algorithm or insulin-delivery changes.
+- AI values stay in an editable, transient review. “Finish review” only marks that review complete in memory; it never creates a carb entry, populates the manual preview, calculates insulin or sends values to Loop.
+- Separate project/scheme/app identifier. Unsigned builds use `org.loopprototype.FoodRecognitionSandbox`; the authorized TestFlight workflow signs only `com.jhardorp.foodrecognitionprototype`. Loop's installation, workspace, version, submodule pins, signing configuration and `main` remain unchanged.
+- Each real photo requires upload confirmation. Only the current JPEG is sent, with no previous meal or therapy data. It is redrawn to at most 1280 pixels, omits original EXIF/location metadata and is capped at 1 MiB for remote requests.
+- Photos/reviews are not persisted, logged, sent to analytics or saved in Photos. Discard, a new request and backgrounding clear the current review/photo. Camera/consent cancellation clears pending captures; dismissing consent without approval does not upload. Backgrounding cancels an in-flight request, but cannot retract a photo already received by a service.
+- Only the URL and a 30-minute app session token are stored in this app's device-only Keychain, accessible while unlocked. The tester code is cleared after submission. Disconnect removes the token; the OpenAI API key never enters the app.
+- The backend does not persist images/estimates and sends OpenAI `store: false`. This **does not** promise zero provider retention: OpenAI's data policy, including abuse-monitoring retention, applies and is linked before upload. Cloudflare also processes network traffic and operational/account metadata under its terms.
 
-## Files
+## Estimates and uncertainty
+
+The real provider uses an image-capable OpenAI model with strict structured output. It reports foods, portions/ranges, item/total carbohydrate grams, fat/protein/fiber, carbohydrate type, glycemic characteristics, assumptions and rationale. Nutrition is **AI inferred, not nutrition-database verified**. Total carbohydrate includes fiber; verify ingredients, portions and labels rather than assuming every food source uses the same convention.
+
+All real estimates have low confidence. Absorption duration is an **experimental composition-based estimate**, not an individualized digestion prediction or a validated Loop absorption-time parameter. The 30–480 minute and 0–250 g limits are prototype validation bounds, not treatment recommendations. Passing code tests does not establish nutritional or physiological accuracy.
+
+Unclear photos request clarification with no numbers. Authentication, quota, timeout, offline, provider and invalid-response failures also produce no fallback estimate. There are no automatic retries. Mock mode remains offline: every photo returns the selected fictional fixture, unrelated to the image; its 180/300-minute durations are not production defaults.
+
+## Setup and files
+
+See [TestFlight](TESTFLIGHT.md) for the separate iPhone trial without a Mac and [browser-only backend setup](Backend/SETUP.md) for real AI. This implementation requires no additional monthly subscription: OpenAI API credits are billed separately and Cloudflare's free tier has usage limits.
 
 | Location | Purpose |
 | --- | --- |
-| `Sources/FoodRecognitionCore` | Provider interface, typed responses, validation, mock fixtures, transient review session |
-| `PrototypeApp` | SwiftUI entry preview/review, UIKit camera bridge, independent Xcode project |
-| `Tests/FoodRecognitionCoreTests` | Core validation, locale input, failure/retry, cancellation, and concurrency tests |
-| `../../docs/ai-food-recognition.md` | Repository inspection, fork decision, and real AI integration plan |
+| `Sources/FoodRecognitionCore` | Injectable providers, bounded HTTPS transport, validation and transient review |
+| `PrototypeApp` | Connection, camera, per-photo consent and editable review; separate Xcode project |
+| `Backend` | OpenAI adapter, strict output contract, short-lived app auth and persistent counters |
+| `Tests/FoodRecognitionCoreTests` | Validation, locale edits, HTTP errors, cancellation and stale replies |
+| `Distribution` | Separate signing/upload lane and configuration guard tests |
 
-## Review and verification
+## Verification
 
-For the separately authorized iPhone trial without a Mac, see [TestFlight setup](TESTFLIGHT.md). That workflow uses a separate app identifier and requires its own App Store Connect app record. The unsigned PR checks below remain separate from distribution.
-
-On a Mac with Xcode 15 or newer, open `PrototypeApp/FoodRecognitionPrototype.xcodeproj` independently of `LoopWorkspace.xcworkspace`. The shared scheme is `FoodRecognitionPrototype`. The initial prototype was not deployed, installed, merged, or submitted to TestFlight. The owner subsequently authorized a separate prototype TestFlight upload; its setup and upload status are handled by the separate distribution workflow. Nothing is merged into main or installed automatically.
-
-Run core tests without signing, devices, or submodules:
+Run without signing, devices, submodules or real API requests:
 
 ```sh
 cd Prototypes/AIFoodRecognition
 swift test
+cd Backend
+npm ci
+npm run check
+npm test
+npx --no-install wrangler deploy --dry-run
 ```
 
-Compile the iPhone UI without installation or signing, from the repository root:
+From the repository root, compile the standalone UI without signing/installation:
 
 ```sh
 xcodebuild \
@@ -46,21 +60,18 @@ xcodebuild \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-The prototype-only PR workflow runs `swift test` and an unsigned simulator **build**, with no simulator launch, installation, archive, deployment, or secrets. It does not invoke Loop's build/release workflows.
+On 2026-10-11, 28 Swift core tests passed locally with Swift 6.0.3 on Linux and container networking disabled. Seventeen Node backend tests, syntax checks and Wrangler dry-run bundling passed. Provider calls are stubbed: these results do **not** verify live credentials, food accuracy or absorption validity. Feature-only CI checks macOS core tests, four existing Ruby guards and an unsigned simulator build, plus backend tests/dry run. New macOS/build/upload results must be checked before claiming delivery of 0.2.0.
 
-Validation on 2026-10-11: 16 XCTest tests passed using Swift 6.0.3 on Linux with container networking disabled and on GitHub's macOS runner. The unsigned iPhone simulator build, four Ruby configuration guard tests, and Fastfile syntax checks also passed on macOS. Physical camera, visual, and accessibility checks remain pending.
+Manual checks for the separately authorized owner trial:
 
-Manual UI checks for a later, explicitly authorized simulator/device review:
-
-1. Select each demo result and use “Use demo meal without camera.” The mixed and high-fat fixtures show foods, portions, composition, total carbs, duration, ranges, and rationale.
-2. For the uncertain/high-fat examples, finishing requires explicit acknowledgment. Blank, negative, malformed, and out-of-bounds edits disable finishing. Locale decimal input is accepted.
-3. Edit carbs and duration, finish the demo review, then edit again. The completion message disappears. Discard removes the review; nothing is transferred to the manual entry preview.
-4. Offline and timeout examples show an error without numeric fallback. The unrecognizable example asks for more information. Retry with a successful example.
-5. Cancel an in-flight estimate, discard, or background the app. A late result must not restore the review.
-6. In a simulator, the camera button explains camera unavailability. On a later authorized device check, verify permission grant/denial/restriction, capture, cancel, rotation/orientation, large photos, VoiceOver, and large text. No photo should appear in Photos.
+1. In OpenAI mode, connect with the deployed HTTPS URL and separate tester code. Check wrong/expired credentials and Disconnect. Provider keys entered as tester codes are rejected before network access.
+2. Capture a photo and Cancel/swipe away the upload preview: no estimate request should occur. Backgrounding during capture/consent clears the pending image. Approval sends one photo only.
+3. With a configured backend and credits, photograph an actual meal with a useful portion reference. Verify foods reflect the image, uncertainty/experimental labels appear and both estimates are editable. Low confidence requires acknowledgment.
+4. Try an unreadable photo, offline connection, revoked token and exhausted quota. Expect explanations/clarification without mock numbers. A paid request may still consume credits after local cancellation.
+5. Cancel/discard/background an in-flight request; a late response must not restore review. Finishing/editing/discarding must remain entirely within this app.
+6. In Mock demo, exercise every fixture, locale/malformed edits, acknowledgment and simulated failures with no network traffic.
+7. Check camera permissions/capture/cancel/orientation, large images, VoiceOver and large text on-device. Neither mode should save a photo or affect Loop.
 
 ## Provider boundary
 
-`FoodEstimating.estimate(photo:)` is an asynchronous, injectable interface. `MealEstimateSession` validates **every** returned estimate before creating an editable `ReviewDraft`. Unknown provider errors become invalid-response failures. Cancellation and request identifiers prevent old responses replacing a new or discarded review. Unrecognizable meals carry no numeric estimate. A real provider must reject `MealPhoto.Kind.demo`.
-
-No absorption algorithm is implemented here: durations are explicit fixtures. A real model's food/portion interpretation and any composition-based duration method need independent evaluation before therapy-related use. See the integration plan for backend security, nutrition grounding, and the proposed Loop UI boundary.
+`FoodEstimating.estimate(photo:)` is injectable. `BackendFoodEstimator` rejects demo input, expired auth and invalid photos before upload. Its ephemeral bounded `URLSession` refuses redirects and disables cookies/disk cache. The backend validates strict model JSON; the iPhone validates the versioned response and every estimate again before creating a `ReviewDraft`. Cancellation/request identifiers prevent old replies restoring an abandoned review. The only finish outcome is an in-memory flag.
