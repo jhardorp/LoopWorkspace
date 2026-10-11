@@ -6,7 +6,7 @@ The owner has an Apple Developer account and has explicitly authorized a separat
 
 The `Separate food prototype TestFlight` workflow runs on a GitHub-hosted Mac from **`feature/ai-food-recognition`**, without merging to `main`. It uses a separate Fastfile and the standalone project. It never checks out the Loop submodules or calls Loop's build/release/certificate-renewal lanes.
 
-Only an explicit change to `Distribution/request.json` triggers the workflow through a branch push. Ordinary source commits and pull requests do not upload. This request currently selects `upload_testflight`, as authorized. Allowed operations are:
+Only an explicit change to `Distribution/request.json` triggers the workflow through a branch push. Ordinary source commits and pull requests do not upload. The initial authorized upload request registered the separate bundle and stopped before upload because the App Store Connect app record is missing. The current request runs read-only configuration and unsigned verification while that app record is created. Allowed operations are:
 
 | Operation | Effect |
 | --- | --- |
@@ -36,7 +36,7 @@ On your iPhone or any computer:
    - Bundle ID: **`com.jhardorp.foodrecognitionprototype`**.
    - SKU: **`food-recognition-prototype`**.
 3. Create the app record. Keep this separate from the Loop app record.
-4. In the feature branch, open [Distribution/request.json](https://github.com/jhardorp/LoopWorkspace/blob/feature/ai-food-recognition/Prototypes/AIFoodRecognition/Distribution/request.json), choose **Edit**, leave `operation` as `upload_testflight`, increase `revision` by one, and commit **to the feature branch**. That explicit request starts another upload attempt. Never merge to `main` for this step.
+4. Tell the assistant once the record is created so the authorized upload can continue. To request it yourself, open [Distribution/request.json](https://github.com/jhardorp/LoopWorkspace/blob/feature/ai-food-recognition/Prototypes/AIFoodRecognition/Distribution/request.json) on the feature branch, choose **Edit**, set `operation` to `upload_testflight`, increase `revision` by one, and commit **to the feature branch**. That explicit request starts another upload attempt. Never merge to `main` for this step.
 
 The optional **Run workflow** button may not be available while this new workflow exists only on the feature branch: GitHub normally requires manual-dispatch workflows on the default branch. Editing the request file is the supported route here and preserves `main`.
 

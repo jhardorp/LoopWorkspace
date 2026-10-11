@@ -80,6 +80,13 @@ jobs:
           swift test --package-path Prototypes/AIFoodRecognition
           ruby Prototypes/AIFoodRecognition/Distribution/settings_test.rb
           ruby -c Prototypes/AIFoodRecognition/Distribution/fastlane/Fastfile
+          xcodebuild \
+            -project Prototypes/AIFoodRecognition/PrototypeApp/FoodRecognitionPrototype.xcodeproj \
+            -scheme FoodRecognitionPrototype \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/FoodRecognitionPrototypeUnsigned" \
+            CODE_SIGNING_ALLOWED=NO build
       - name: Install existing pinned fastlane dependency
         run: bundle install
       - name: Run only the separate prototype lane

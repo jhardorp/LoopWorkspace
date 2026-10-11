@@ -1,6 +1,7 @@
 require 'base64'
 require_relative '../settings'
 
+opt_out_usage
 default_platform(:ios)
 
 platform :ios do
