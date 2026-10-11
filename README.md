@@ -46,4 +46,4 @@ Select the "LoopWorkspace" scheme (not the "Loop" scheme) and Build, Run, or Tes
 
 ### Standalone food recognition prototype
 
-The [mock food recognition prototype](Prototypes/AIFoodRecognition/README.md) has a separate Xcode project, camera flow, and editable review screen. It is disconnected from Loop therapy and uses fictional estimates. See the [repository inspection and real AI integration plan](docs/ai-food-recognition.md) for the version findings and future fork requirements.
+The separate [Loop+ meal-review prototype](Prototypes/AIFoodRecognition/README.md) has its own camera/review app, an offline mock mode and opt-in OpenAI analysis through an owner-configured backend. Loop+ 0.2.0 (2) was uploaded to its separate TestFlight app; real AI requires [backend setup](Prototypes/AIFoodRecognition/Backend/SETUP.md). Reviews stay disconnected from Loop therapy. See the [repository inspection and integration plan](docs/ai-food-recognition.md) for version findings, remaining accuracy validation and future Loop-fork requirements.

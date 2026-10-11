@@ -2,7 +2,7 @@
 
 The owner selected OpenAI, accepted small per-photo API charges and requested no additional monthly subscription. This setup uses **OpenAI prepaid API credits** and **Cloudflare Workers Free**, with a SQLite Durable Object for request counters. It does not buy a subscription or upgrade a hosting plan. ChatGPT subscription billing does not cover API use.
 
-Source and tests are prepared; **no live backend or paid model call is confirmed yet**. The assistant can prepare builds and start GitHub jobs; the owner must create provider credentials in their own browser. Never paste keys/access codes into chat, issues or source files. They never belong in the iPhone app.
+The separate **Loop+ 0.2.0 (2)** upload was accepted by Apple in [run 38175789487](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175789487). The owner confirmed saving the OpenAI key in Actions secrets; **no live backend or paid model call is confirmed yet**. The assistant can prepare builds and start GitHub jobs; the owner must create provider credentials in their own browser. Never paste keys/access codes into chat, issues or source files. They never belong in the iPhone app.
 
 ## 1. OpenAI credits and key
 

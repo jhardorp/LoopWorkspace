@@ -1,6 +1,6 @@
 # Loop+ food recognition prototype
 
-Loop+ is a **separate iPhone meal-review app**, not a modified Loop installation. Version 0.1.0 (1) was uploaded to TestFlight and installed by the owner. The 0.2.0 source adds opt-in OpenAI photo analysis through an authenticated, owner-controlled backend and retains the explicitly labeled mock demo. Live AI requires configured backend credentials and API credits; compiling the app alone cannot enable it.
+Loop+ is a **separate iPhone meal-review app**, not a modified Loop installation. Version 0.1.0 (1) was installed by the owner. Apple accepted the separate **0.2.0 (2)** upload on 2026-10-11 in [run 38175789487](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175789487); processing/device update are not verified by the upload lane. Version 0.2.0 adds opt-in OpenAI photo analysis through an authenticated, owner-controlled backend and retains the explicitly labeled mock demo. Live AI requires configured backend credentials and API credits; compiling the app alone cannot enable it.
 
 The preview mirrors amount, time, food type and absorption duration from Loop's carbohydrate-entry screen. It does **not** yet add a camera button to Loop's actual screen. See [repository inspection and fork decision](../../docs/ai-food-recognition.md).
 
@@ -60,7 +60,7 @@ xcodebuild \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-On 2026-10-11, 28 Swift core tests passed locally with Swift 6.0.3 on Linux and container networking disabled. Seventeen Node backend tests, syntax checks and Wrangler dry-run bundling passed. Provider calls are stubbed: these results do **not** verify live credentials, food accuracy or absorption validity. Feature-only CI checks macOS core tests, four existing Ruby guards and an unsigned simulator build, plus backend tests/dry run. New macOS/build/upload results must be checked before claiming delivery of 0.2.0.
+On 2026-10-11, 28 Swift core tests passed locally with Swift 6.0.3 on Linux and container networking disabled. Seventeen Node backend tests, syntax checks and Wrangler dry-run bundling passed. Provider calls are stubbed: these results do **not** verify live credentials, food accuracy or absorption validity. Feature-only CI checks macOS core tests, four existing Ruby guards and an unsigned simulator build, plus backend tests/dry run. The macOS tests, unsigned UI build and separate signed 0.2.0 upload subsequently passed in the runs linked below; live provider/device checks remain pending.
 
 Manual checks for the separately authorized owner trial:
 
@@ -78,4 +78,4 @@ Manual checks for the separately authorized owner trial:
 
 Backend checks also passed on GitHub in [validate-only run 38174675553](https://github.com/jhardorp/LoopWorkspace/actions/runs/38174675553), without server credentials, deployment or paid provider requests.
 
-The updated macOS core tests, four Ruby guards, unsigned iPhone simulator build and backend checks passed in [PR run 38175329086](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175329086). The explicit distribution request now asks for the separately authorized 0.2.0 upload; an upload result is still pending.
+The updated macOS core tests, four Ruby guards, unsigned iPhone simulator build and backend checks passed in [PR run 38175329086](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175329086). The separately authorized 0.2.0 (2) signed build/upload also passed in [run 38175789487](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175789487). The log confirms App Store Connect accepted the package; it does not verify Apple processing, internal tester availability or a device update.

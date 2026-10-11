@@ -2,7 +2,9 @@
 
 The owner has an Apple Developer account and has explicitly authorized a separate prototype TestFlight upload. This is **Loop+**, with bundle ID **`com.jhardorp.foodrecognitionprototype`**. It does not replace or update the existing Loop app. The installed 0.1.0 build is mock-only. The 0.2.0 source adds opt-in OpenAI analysis, which requires [backend setup](Backend/SETUP.md) before real photos can be analyzed.
 
-**Confirmed upload on 2026-10-11:** [workflow run 38158512784](https://github.com/jhardorp/LoopWorkspace/actions/runs/38158512784) passed and App Store Connect accepted the prototype binary. The project version is **0.1.0**, build **1**. Apple processing and internal tester access were not verified by that upload lane; follow the installation steps below once the build is available.
+**Latest confirmed upload: Loop+ 0.2.0 (2)** was accepted by App Store Connect on 2026-10-11 in [run 38175789487](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175789487). Swift/backend/Ruby checks, unsigned compilation and signed export/upload passed. Apple processing and availability to the existing internal group are not verified by that lane. Once processed, select build 2 under the group’s **Builds** tab if it is not assigned automatically, then update Loop+ in TestFlight. Real analysis additionally requires the separate backend setup.
+
+**Earlier confirmed upload on 2026-10-11:** [workflow run 38158512784](https://github.com/jhardorp/LoopWorkspace/actions/runs/38158512784) passed and App Store Connect accepted the prototype binary. The project version is **0.1.0**, build **1**. Apple processing and internal tester access were not verified by that upload lane; follow the installation steps below once the build is available.
 
 **Owner device check:** the owner subsequently supplied App Store Connect screenshots showing completed processing and an internal group with one tester and one build, then confirmed installation. A device screenshot shows a captured photo in the mock review. This confirms the standalone installation and capture/review path; the food estimates remain fictional and unrelated to the photo. It does not validate real recognition, numerical accuracy, or all camera/accessibility cases.
 
@@ -56,4 +58,4 @@ The workflow does not invite testers or install anything automatically. A comple
 
 ## 0.2.0 AI connection update
 
-The updated Swift/backend/Ruby tests and unsigned iPhone build passed in [run 38175329086](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175329086). Distribution request revision 6 starts the authorized separate 0.2.0 build/upload. This records a request, not a confirmed upload or processed Apple build. Real photo analysis also needs the owner-configured backend and API credits described in the setup guide.
+The updated Swift/backend/Ruby tests and unsigned iPhone build passed in [run 38175329086](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175329086). Distribution request revision 6 succeeded in [run 38175789487](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175789487): Apple accepted **0.2.0 (2)**. This proves upload, not processed Apple status, tester-group assignment or installation. Real photo analysis also needs the owner-configured backend and API credits described in the setup guide.
