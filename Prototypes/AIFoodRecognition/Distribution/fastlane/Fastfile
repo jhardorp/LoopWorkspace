@@ -29,7 +29,7 @@ platform :ios do
     identifier = options.fetch(:bundle_id)
     bundle = Spaceship::ConnectAPI::BundleId.find(identifier)
     unless bundle
-      Spaceship::ConnectAPI::BundleId.create(name: 'Food Review Demo', identifier: identifier, platform: 'IOS')
+      Spaceship::ConnectAPI::BundleId.create(name: 'Loop+', identifier: identifier, platform: 'IOS')
     end
     UI.success("Separate prototype bundle is registered: #{identifier}")
   end
@@ -100,7 +100,7 @@ platform :ios do
     register_prototype_bundle(configuration)
     app = Spaceship::ConnectAPI::App.find(configuration.fetch(:bundle_id))
     unless app
-      UI.user_error!("APP_RECORD_REQUIRED: In App Store Connect > My Apps > + > New App, create an iOS app using bundle ID #{configuration.fetch(:bundle_id)}, name Food Review Demo (jhardorp), and SKU food-recognition-prototype. Then retry this prototype request. No upload has occurred.")
+      UI.user_error!("APP_RECORD_REQUIRED: In App Store Connect > My Apps > + > New App, create an iOS app using bundle ID #{configuration.fetch(:bundle_id)}, name Loop+, and SKU food-recognition-prototype. Then retry this prototype request. No upload has occurred.")
     end
     build_number = latest_testflight_build_number(
       app_identifier: configuration.fetch(:bundle_id),

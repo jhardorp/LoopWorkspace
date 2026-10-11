@@ -1,4 +1,4 @@
-# Food recognition prototype
+# Loop+ food recognition prototype
 
 This is a standalone, mock-only iPhone app and a dependency-free Swift package. It previews a camera button beside the same input concepts as Loop's carbohydrate-entry screen, then displays editable carbohydrates and absorption duration. It does **not** add that button to the installed Loop app or wire the prototype into Loop's existing screen. That is a subsequent integration step.
 

@@ -1,6 +1,6 @@
 # Test the separate prototype without a Mac
 
-The owner has an Apple Developer account and has explicitly authorized a separate prototype TestFlight upload. This is **Food Review Demo**, with bundle ID **`com.jhardorp.foodrecognitionprototype`**. It does not replace or update the existing Loop app. Recognition remains mock-only.
+The owner has an Apple Developer account and has explicitly authorized a separate prototype TestFlight upload. This is **Loop+**, with bundle ID **`com.jhardorp.foodrecognitionprototype`**. It does not replace or update the existing Loop app. Recognition remains mock-only.
 
 ## What runs on GitHub
 
@@ -32,7 +32,7 @@ On your iPhone or any computer:
 
 1. Open [App Store Connect](https://appstoreconnect.apple.com/), choose **My Apps**, then **+ → New App**.
 2. Select **iOS** and **English**, and enter:
-   - Name: **Food Review Demo (jhardorp)**. If Apple requires another unique name, choose a different prototype name; leave the bundle unchanged.
+   - Name: **Loop+**. If Apple requires another unique name, choose a different prototype name; leave the bundle unchanged.
    - Bundle ID: **`com.jhardorp.foodrecognitionprototype`**.
    - SKU: **`food-recognition-prototype`**.
 3. Create the app record. Keep this separate from the Loop app record.
@@ -44,6 +44,6 @@ The optional **Run workflow** button may not be available while this new workflo
 
 Apple must process the uploaded build before it can be tested; timing is outside this workflow's control. Open the prototype's **TestFlight** tab in App Store Connect, create/select an **internal testing** group, add your own tester account, and select the processed prototype build. Resolve any Apple account or export-compliance prompts. External testing is not automatically enabled or submitted for Beta App Review.
 
-Then open TestFlight on your iPhone and install **Food Review Demo**, alongside Loop. This is a separate installation; do not replace Loop. Test camera permission/capture/cancel, editable carb grams and absorption minutes, uncertainty acknowledgment, and the simulated failures. Every photo uses the selected fictional fixture. Nothing is saved to Loop or used for insulin therapy.
+Then open TestFlight on your iPhone and install **Loop+**, alongside Loop. This is a separate installation; do not replace Loop. Test camera permission/capture/cancel, editable carb grams and absorption minutes, uncertainty acknowledgment, and the simulated failures. Every photo uses the selected fictional fixture. Nothing is saved to Loop or used for insulin therapy.
 
 The workflow does not invite testers or install anything automatically. A completed GitHub build is not proof that the app is already visible in TestFlight; upload, Apple processing, and internal tester access are separate states.
