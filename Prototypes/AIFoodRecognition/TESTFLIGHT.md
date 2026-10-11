@@ -6,7 +6,7 @@ The owner has an Apple Developer account and has explicitly authorized a separat
 
 The `Separate food prototype TestFlight` workflow runs on a GitHub-hosted Mac from **`feature/ai-food-recognition`**, without merging to `main`. It uses a separate Fastfile and the standalone project. It never checks out the Loop submodules or calls Loop's build/release/certificate-renewal lanes.
 
-Only an explicit change to `Distribution/request.json` triggers the workflow through a branch push. Ordinary source commits and pull requests do not upload. The initial authorized upload request registered the separate bundle and stopped before upload because the App Store Connect app record is missing. The current request runs read-only configuration and unsigned verification while that app record is created. Allowed operations are:
+Only an explicit change to `Distribution/request.json` triggers the workflow through a branch push. Ordinary source commits and pull requests do not upload. The separate bundle and App Store Connect app record now exist. The current request is an authorized `upload_testflight` attempt; check its workflow result to confirm whether Apple accepted an upload. Allowed operations are:
 
 | Operation | Effect |
 | --- | --- |
