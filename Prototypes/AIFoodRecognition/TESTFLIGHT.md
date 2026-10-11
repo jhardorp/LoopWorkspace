@@ -4,6 +4,8 @@ The owner has an Apple Developer account and has explicitly authorized a separat
 
 **Confirmed upload on 2026-10-11:** [workflow run 38158512784](https://github.com/jhardorp/LoopWorkspace/actions/runs/38158512784) passed and App Store Connect accepted the prototype binary. The project version is **0.1.0**, build **1**. Apple processing and internal tester access were not verified by that upload lane; follow the installation steps below once the build is available.
 
+**Owner device check:** the owner subsequently supplied App Store Connect screenshots showing completed processing and an internal group with one tester and one build, then confirmed installation. A device screenshot shows a captured photo in the mock review. This confirms the standalone installation and capture/review path; the food estimates remain fictional and unrelated to the photo. It does not validate real recognition, numerical accuracy, or all camera/accessibility cases.
+
 ## What runs on GitHub
 
 The `Separate food prototype TestFlight` workflow runs on a GitHub-hosted Mac from **`feature/ai-food-recognition`**, without merging to `main`. It uses a separate Fastfile and the standalone project. It never checks out the Loop submodules or calls Loop's build/release/certificate-renewal lanes.
