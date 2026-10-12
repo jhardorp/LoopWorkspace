@@ -224,7 +224,7 @@ final class PrototypeViewModel: ObservableObject {
         case .rateLimited: return "The request limit was reached. Wait before trying another photo; no fallback estimate was used."
         case .serviceUnavailable: return "The AI service is unavailable or still needs server setup. No estimate was produced."
         case .invalidConfiguration: return "Enter your tester password once (32 or more characters). The service address is prefilled; your OpenAI API key belongs on the server."
-        case .uploadConsentRequired: return "Confirm the photo upload before requesting an AI estimate."
+        case .uploadConsentRequired: return "Photograph a meal to start analysis."
         }
     }
 }

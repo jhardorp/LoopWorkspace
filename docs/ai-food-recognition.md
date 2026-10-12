@@ -41,8 +41,7 @@ A **LoopKit fork is not required** for the proposed camera/review UI: Loop owns 
 
 ```mermaid
 flowchart LR
-    Camera[Current camera photo] --> Consent[Per-photo upload confirmation]
-    Consent --> HTTPS[Authenticated HTTPS backend]
+    Camera[Accepted camera photo] --> HTTPS[Automatic analysis through authenticated HTTPS backend]
     HTTPS --> OpenAI[OpenAI image and structured output]
     OpenAI --> BackendValidation[Backend schema and totals validation]
     BackendValidation --> Validation[iPhone validation and request identity]
@@ -58,7 +57,7 @@ The owner installed the 0.1.0 mock prototype, then selected OpenAI and accepted 
 
 The backend uses `gpt-4.1-2025-04-14` Responses with strict JSON, `store: false`, a 35-second timeout and no retry. Only the current JPEG is submitted; no CGM, prior meals, insulin or therapy settings. A separate tester code produces a 30-minute origin-bound app token; the OpenAI key stays in server secret storage. Persistent SQLite counters default to 10 photos per UTC day and 3 per minute across sessions. Login limits use salted IP digests; counters store no images or estimates.
 
-The app uses bounded ephemeral HTTPS without redirects, cookies, disk cache or background uploads. At the owner's request, 0.3.0 adds a prefilled public server address and one-time tester-password setup. Its device-only Keychain stores URL/tester password/short-lived session, accessible while unlocked and without iCloud synchronization; authorization renews automatically on foreground/use. The 0.2.0 address/session record migrates, but needs the password once because that older version did not store it. Logout/revocation/cancellation prevent pending renewal restoring forgotten credentials. No provider API key is stored by the app. Photos/reviews stay transient, and no photo is retried automatically. Cancel/discard/backgrounding and request identities prevent late replies restoring an abandoned review. Dismissing per-photo consent without approval does not upload.
+The app uses bounded ephemeral HTTPS without redirects, cookies, disk cache or background uploads. At the owner's request, 0.3.0 adds a prefilled public server address and one-time tester-password setup. Its device-only Keychain stores URL/tester password/short-lived session, accessible while unlocked and without iCloud synchronization; authorization renews automatically on foreground/use. The 0.2.0 address/session record migrates, but needs the password once because that older version did not store it. Logout/revocation/cancellation prevent pending renewal restoring forgotten credentials. No provider API key is stored by the app. Photos/reviews stay transient, and no photo is retried automatically. Cancel/discard/backgrounding and request identities prevent late replies restoring an abandoned review. The owner has now requested automatic analysis after capture: accepting the camera photo starts one request without a separate upload confirmation; cancelling the camera sends no image.
 
 Estimates show foods, portion ranges, item/total carbohydrate grams, fat/protein/fiber, carbohydrate type, glycemic characteristics, absorption range/rationale, assumptions, low confidence and provenance. Nutrition is **AI inferred, not database verified**; total carbohydrate includes fiber. Duration is an **experimental composition-based suggestion**, not an individual physiological prediction or a validated Loop modeling parameter. Clarification has no numeric estimate. Invalid replies, auth/offline/timeout/quota/provider failures produce no fallback numbers.
 

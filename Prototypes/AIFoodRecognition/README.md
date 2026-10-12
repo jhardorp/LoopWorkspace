@@ -17,8 +17,8 @@ The standalone preview mirrors amount, time, food type and absorption duration f
 - No Loop, LoopKit, HealthKit, CGM, historical meal, insulin, pump or therapy-store dependency. No dosing-algorithm or insulin-delivery changes.
 - AI values stay in an editable, transient review. “Finish review” only marks that review complete in memory; it never creates a carb entry, populates the manual preview, calculates insulin or sends values to Loop.
 - Separate project/scheme/app identifier. Unsigned builds use `org.loopprototype.FoodRecognitionSandbox`; the authorized TestFlight workflow signs only `com.jhardorp.foodrecognitionprototype`. Loop's installation, workspace, version, submodule pins, signing configuration and `main` remain unchanged.
-- Each real photo requires upload confirmation. Only the current JPEG is sent, with no previous meal or therapy data. It is redrawn to at most 1280 pixels, omits original EXIF/location metadata and is capped at 1 MiB for remote requests.
-- Photos/reviews are not persisted, logged, sent to analytics or saved in Photos. Discard, a new request and backgrounding clear the current review/photo. Camera/consent cancellation clears pending captures; dismissing consent without approval does not upload. Backgrounding cancels an in-flight request, but cannot retract a photo already received by a service.
+- Capturing a real meal now starts analysis automatically, as requested by the owner. There is no separate upload confirmation screen. Only the current JPEG is sent, with no previous meal or therapy data. It is redrawn to at most 1280 pixels, omits original EXIF/location metadata and is capped at 1 MiB for remote requests.
+- Photos/reviews are not persisted, logged, sent to analytics or saved in Photos. Discard, a new request and backgrounding clear the current review/photo. Cancelling the camera sends no photo. Backgrounding cancels an in-flight request, but cannot retract a photo already received by a service.
 - In 0.3.0, the URL, separate tester password and 30-minute app token are stored in this app's device-only Keychain, accessible while unlocked and without iCloud synchronization. The password field is cleared after submission. The app renews authorization with the saved password; it never automatically retries a photo. **Forget saved login** cancels pending renewal and deletes the saved connection. A changed/revoked password requires new one-time setup. The OpenAI API key never enters the app.
 - The backend does not persist images/estimates and sends OpenAI `store: false`. This **does not** promise zero provider retention: OpenAI's data policy, including abuse-monitoring retention, applies and is linked before upload. Cloudflare also processes network traffic and operational/account metadata under its terms.
 
@@ -37,7 +37,7 @@ See [TestFlight](TESTFLIGHT.md) for the separate iPhone trial without a Mac and 
 | Location | Purpose |
 | --- | --- |
 | `Sources/FoodRecognitionCore` | Injectable providers, bounded HTTPS transport, validation and transient review |
-| `PrototypeApp` | Connection, camera, per-photo consent and editable review; separate Xcode project |
+| `PrototypeApp` | Connection, camera, automatic capture analysis and editable review; separate Xcode project |
 | `Backend` | OpenAI adapter, strict output contract, short-lived app auth and persistent counters |
 | `Tests/FoodRecognitionCoreTests` | Validation, locale edits, HTTP errors, cancellation and stale replies |
 | `Distribution` | Separate signing/upload lane and configuration guard tests |
@@ -73,7 +73,7 @@ On 2026-10-11, 28 Swift core tests passed locally with Swift 6.0.3 on Linux and 
 Manual checks for the separately authorized owner trial:
 
 1. In OpenAI mode, confirm the server address is prefilled under **Service settings**. Enter the separate tester password once. Quit/reopen and background/foreground after more than 30 minutes: authorization renews without re-entering either value. Check offline/revoked credentials and **Forget saved login**. Provider keys entered as tester codes are rejected before network access. Upgrade from 0.2.0 keeps its saved address and needs the password once.
-2. Capture a photo and Cancel/swipe away the upload preview: no estimate request should occur. Backgrounding during capture/consent clears the pending image. Approval sends one photo only.
+2. Cancel the camera: no estimate request should occur. Accept a captured photo: one analysis starts directly, without an upload preview or confirmation. Backgrounding during capture or analysis cancels the current operation.
 3. With a configured backend and credits, photograph an actual meal with a useful portion reference. Verify foods reflect the image, uncertainty/experimental labels appear and both estimates are editable. Low confidence requires acknowledgment.
 4. Try an unreadable photo, offline connection, revoked token and exhausted quota. Expect explanations/clarification without mock numbers. A paid request may still consume credits after local cancellation.
 5. Cancel/discard/background an in-flight request; a late response must not restore review. Finishing/editing/discarding must remain entirely within this app.

@@ -14,9 +14,6 @@ public struct FoodRecognitionView: View {
     @State private var showCamera = false
     @State private var cameraError: String?
     @State private var requestingCamera = false
-    @State private var pendingImage: UIImage?
-    @State private var pendingUpload: UIImage?
-    @State private var showUploadConsent = false
     @State private var transferError: String?
     @State private var manualCarbs = ""
     @State private var manualMinutes = "180"
@@ -51,18 +48,12 @@ public struct FoodRecognitionView: View {
             }
         }
         .navigationViewStyle(.stack)
-        .fullScreenCover(isPresented: $showCamera, onDismiss: {
-            if let image = pendingImage {
-                pendingImage = nil
-                if model.mode == .openAI {
-                    pendingUpload = image
-                    showUploadConsent = true
-                } else { model.analyze(image) }
-            }
-        }) {
+        .fullScreenCover(isPresented: $showCamera) {
             MealCameraView(onCapture: { image in
-                pendingImage = image
                 showCamera = false
+                guard UIApplication.shared.applicationState == .active else { return }
+                // Capturing a meal authorizes its analysis; no separate upload screen is shown.
+                model.analyze(image, consentToUpload: true)
             }, onCancel: { showCamera = false })
                 .ignoresSafeArea()
         }
@@ -72,11 +63,6 @@ public struct FoodRecognitionView: View {
             Button("OK", role: .cancel) { cameraError = nil }
         } message: {
             Text(cameraError ?? "")
-        }
-        .sheet(isPresented: $showUploadConsent, onDismiss: {
-            pendingUpload = nil
-        }) {
-            uploadConfirmation
         }
         // UIKit hosts do not reliably supply SwiftUI's scenePhase environment.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
@@ -94,42 +80,6 @@ public struct FoodRecognitionView: View {
     private var title: String {
         if case .reviewing = model.state { return model.mode == .demo ? "Review Meal · Demo" : "Review Meal · AI" }
         return onUseMeal == nil ? "Loop+ Meal Review" : "Meal photo review"
-    }
-
-    private var uploadConfirmation: some View {
-        NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    if let image = pendingUpload {
-                        Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 280)
-                            .accessibilityLabel("Photo awaiting your upload confirmation")
-                    }
-                    Text("Send this photo for AI review?").font(.headline)
-                    Text("This photo goes through \(model.serverHost) to OpenAI and consumes API credits. The app and backend do not save it; OpenAI's data retention rules apply.")
-                    Text("Nutrition and absorption duration are uncertain estimates. Review portions and ingredients before editing the values.")
-                    Link("Read OpenAI's data policy", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
-                    Button("Analyze this photo") {
-                        guard UIApplication.shared.applicationState == .active,
-                              model.mode == .openAI, let image = pendingUpload else { return }
-                        // Start from the explicit tap; dismissal must never initiate or cancel consent.
-                        model.analyze(image, consentToUpload: true)
-                        showUploadConsent = false
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(pendingUpload == nil || model.state == .estimating)
-                    .accessibilityIdentifier("confirmPhotoUpload")
-                }
-                .padding()
-            }
-            .navigationTitle("Photo upload")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel", role: .cancel) { showUploadConsent = false }
-                }
-            }
-        }
-        .navigationViewStyle(.stack)
     }
 
     private var entry: some View {
@@ -279,9 +229,6 @@ public struct FoodRecognitionView: View {
     private func discard() {
         model.clear()
         transferError = nil
-        pendingImage = nil
-        pendingUpload = nil
-        showUploadConsent = false
         manualCarbs = ""
         manualMinutes = "180"
         manualFood = ""
@@ -365,6 +312,8 @@ public struct FoodRecognitionView: View {
                 Button("Retry connection") { model.resume() }.disabled(model.connecting)
             }
             Text("OpenAI requests consume API credits. The prototype backend allows up to 10 photos per day and 3 per minute. Failed provider requests also count; there are no automatic retries.")
+                .font(.footnote).foregroundColor(.secondary)
+            Text("Captured meal photos are analyzed automatically by OpenAI.")
                 .font(.footnote).foregroundColor(.secondary)
             Link("OpenAI photo data policy", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
                 .font(.footnote)
