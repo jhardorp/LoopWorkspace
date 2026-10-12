@@ -20,6 +20,8 @@ The existing Loop source belongs to upstream LoopKit. A pinned build overlay is 
 
 For a signing-only retry, a request can name the previously validated source/run. `reuse_validation.py` checks the source SHA, successful full compile step and changed-file list before reusing compilation. App source, package, overlay, submodule and code-to-documentation rename changes require a fresh compile. Local tests cover these cases. Raw simulator output is kept in the temporary runner log and only its tail is printed so signing diagnostics remain readable.
 
+The simulator compiler retries the same build once if its only errors are embedded framework copies missing generated `Info.plist` files. This lets an incremental build recopy completed plugin products after the workspace's parallel plugin build. Source errors, mixed failures and a failed second attempt remain failures; the retry never skips app validation. Five local tests cover recovery, unchanged build arguments and failure propagation.
+
 ## No credential entry
 
 The server URL is preconfigured. For the requested personal builds, `configure_meal_review.py` writes the owner's **tester login** from the existing `FOOD_TESTER_ACCESS_CODE` Actions secret into the temporary app plist before signing. The first launch uses it automatically and stores the resulting connection in the device Keychain. Later sessions renew without typing. The tester login is therefore contained in these signed app bundles; it is not committed to source. OpenAI and Cloudflare provider credentials remain on the server/in Actions secret storage.
