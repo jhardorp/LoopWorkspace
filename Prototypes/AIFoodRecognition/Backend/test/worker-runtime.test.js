@@ -13,10 +13,13 @@ test("Cloudflare runtime sends the provider request and rejects redirects withou
   let providerStatus = 200;
   const runtime = new Miniflare(convertV4MiniflareOptions({
     name: config.name, cf: false, modulesRoot: root,
-    modules: ["worker.js", "auth.js", "contract.js"].map((name) => ({
+    modules: [{
+      type: "ESModule", path: `${root}runtime-test-entry.js`,
+      contents: 'export { default, PrototypeQuota } from "./src/worker.js";',
+    }, ...["worker.js", "auth.js", "contract.js"].map((name) => ({
       type: "ESModule", path: `${root}src/${name}`,
       contents: readFileSync(new URL(`../src/${name}`, import.meta.url), "utf8"),
-    })),
+    }))],
     compatibilityDate: config.compatibility_date,
     compatibilityFlags: config.compatibility_flags,
     bindings: { ...config.vars, OPENAI_API_KEY: "sk-runtime-test-only-key", TESTER_ACCESS_CODE: accessCode },
