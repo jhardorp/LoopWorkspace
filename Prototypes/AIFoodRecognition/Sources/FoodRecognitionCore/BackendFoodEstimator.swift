@@ -66,7 +66,7 @@ public struct FoodBackendClient: Sendable {
         return session
     }
 
-    static func validateTesterCode(_ testerCode: String) throws {
+    public static func validateTesterCode(_ testerCode: String) throws {
         // Prevent accidentally sending a provider API key to an app-login endpoint.
         guard (32...256).contains(testerCode.utf8.count), !testerCode.hasPrefix("sk-"),
               !testerCode.contains(where: { $0.isWhitespace }) else {

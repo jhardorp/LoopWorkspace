@@ -80,7 +80,7 @@ jobs:
       - name: Compile integrated Loop without signing
         run: >-
           xcodebuild -workspace LoopWorkspace.xcworkspace
-          -scheme LoopWorkspace -sdk iphonesimulator
+          -scheme LoopWorkspace
           -destination 'generic/platform=iOS Simulator'
           -derivedDataPath "$RUNNER_TEMP/LoopMealReviewUnsigned"
           CODE_SIGNING_ALLOWED=NO build
