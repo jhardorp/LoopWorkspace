@@ -1,4 +1,4 @@
 {
-  "operation": "check_configuration",
-  "revision": 3
+  "operation": "deploy",
+  "revision": 4
 }
