@@ -5,7 +5,7 @@ platform :ios do
   lane :upload_meal_review_loop do
     authorization = Base64.strict_encode64("#{ENV.fetch('GITHUB_REPOSITORY_OWNER')}:#{ENV.fetch('GH_PAT')}")
     puts "::add-mask::#{authorization}" if ENV['GITHUB_ACTIONS'] == 'true'
-    Dir.chdir(ENV.fetch('GITHUB_WORKSPACE')) { build_loop }
+    Dir.chdir(File.join(ENV.fetch('GITHUB_WORKSPACE'), 'fastlane')) { build_loop }
     api_key = app_store_connect_api_key(
       key_id: ENV.fetch('FASTLANE_KEY_ID'),
       issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),

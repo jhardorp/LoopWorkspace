@@ -1,4 +1,6 @@
 {
   "operation": "upload_testflight",
-  "revision": 2
+  "revision": 3,
+  "validatedSource": "7e09324f43c723a2c1c976c22ee740ea0469061b",
+  "validationRun": 38278695063
 }
