@@ -93,6 +93,7 @@ jobs:
         run: |
           swift test --package-path Prototypes/AIFoodRecognition
           ruby Prototypes/AIFoodRecognition/Distribution/settings_test.rb
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review_test.py
           ruby -c Prototypes/AIFoodRecognition/Distribution/fastlane/Fastfile
           xcodebuild \
             -project Prototypes/AIFoodRecognition/PrototypeApp/FoodRecognitionPrototype.xcodeproj \
@@ -103,6 +104,13 @@ jobs:
             CODE_SIGNING_ALLOWED=NO build
       - name: Install existing pinned fastlane dependency
         run: bundle install
+      - name: Preconfigure meal review login for the personal signed build
+        if: steps.request.outputs.operation != 'check_configuration'
+        env:
+          FOOD_TESTER_ACCESS_CODE: ${{ secrets.FOOD_TESTER_ACCESS_CODE }}
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review.py
+          --plist Prototypes/AIFoodRecognition/PrototypeApp/Info.plist
       - name: Run only the separate prototype lane
         working-directory: Prototypes/AIFoodRecognition/Distribution
         env:

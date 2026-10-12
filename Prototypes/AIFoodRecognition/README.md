@@ -1,12 +1,14 @@
-# Loop+ food recognition prototype
+# Loop+ and Loop meal photo review
+
+**0.4.0 / Loop integration:** the shared review UI puts editable carbohydrate grams, absorption minutes and meal notes first, with ranges and explanations below. Personal signed builds preconfigure the tester login from GitHub secret storage and renew it automatically, so no server address or password needs to be typed. The new [Loop integration](Integration/README.md) adds **Photograph meal** to the feature branch's Loop 3.14.9 carb-entry screen; **Use in Loop** fills its editable fields before the existing Continue flow. The standalone Loop+ app uses the same result layout.
 
 Loop+ is a **separate iPhone meal-review app**, not a modified Loop installation. Version 0.1.0 (1) was installed by the owner. Apple accepted the separate **0.2.0 (2)** upload on 2026-10-11 in [run 38175789487](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175789487); processing/device update are not verified by the upload lane. Version 0.2.0 adds opt-in OpenAI photo analysis through an authenticated, owner-controlled backend and retains the explicitly labeled mock demo. On 2026-10-12, [deployment run 38209167402](https://github.com/jhardorp/LoopWorkspace/actions/runs/38209167402) published the backend and verified its public health endpoint. Use **`https://loop-plus-meal-review.jan-1af.workers.dev`** and the owner's private tester code in Loop+ 0.2.0. A consented photo with API credit is still needed to verify live OpenAI access and recognition; no paid model call has been made by this work.
 
-The preview mirrors amount, time, food type and absorption duration from Loop's carbohydrate-entry screen. It does **not** yet add a camera button to Loop's actual screen. See [repository inspection and fork decision](../../docs/ai-food-recognition.md).
+The standalone preview mirrors amount, time, food type and absorption duration from Loop's carbohydrate-entry screen. The separately built Loop integration adds the camera button to the actual screen using a reviewed, source-pinned build overlay. See [integration and build details](Integration/README.md).
 
 **0.3.0 (3) remembered login:** Apple accepted the separate update on 2026-10-12 in [run 38271487237](https://github.com/jhardorp/LoopWorkspace/actions/runs/38271487237). The public Loop+ server address is prefilled. Enter the separate tester password once; the app stores it in device-only Keychain storage and renews its 30-minute authorization automatically on foreground/use. An upgrade from 0.2.0 preserves the saved address but needs the password once because that older version did not retain it. Apple processing, internal tester assignment and the device update are not verified by the upload lane.
 
-## Scope and isolation
+## Standalone app scope
 
 - No Loop, LoopKit, HealthKit, CGM, historical meal, insulin, pump or therapy-store dependency. No dosing-algorithm or insulin-delivery changes.
 - AI values stay in an editable, transient review. “Finish review” only marks that review complete in memory; it never creates a carb entry, populates the manual preview, calculates insulin or sends values to Loop.

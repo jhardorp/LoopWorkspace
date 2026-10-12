@@ -1,5 +1,13 @@
 # AI food recognition: inspection and next integration
 
+## Current owner-requested integration
+
+The owner requested credential-free personal builds, a result-first review layout and photo review inside Loop. The implementation now shares `FoodRecognitionUI` between Loop+ 0.4.0 and a pinned Loop 3.14.9 integration. Signed personal builds receive only the tester login through the temporary build plist and renew sessions using the existing Keychain connection. Provider keys remain on the server.
+
+`Integration/LoopMealReview.patch` adds the camera/review sheet and an explicit reviewed-input method to the pinned carb-entry screen/model. Accepting copies editable values without saving or automatically advancing to bolus; the existing Continue flow handles that. The owner-requested integration uses the existing feature branch's 3.14.9 source, not a silent change to the older installed source. No submodule pointer or `main` change is needed. This reviewed build overlay replaces the earlier fork-only recommendation for this branch; a future upstream source change must rebase it and pass the full simulator build. See [integration details](../Prototypes/AIFoodRecognition/Integration/README.md).
+
+The sections below retain the earlier standalone investigation and its historical version findings.
+
 ## Repository findings
 
 Inspected `jhardorp/LoopWorkspace`, branch `feature/ai-food-recognition`, at `548b33245198eaae165c094c9c68fe333cb69c05`. Its default branch is `main`. The workspace is a fork of `LoopKit/LoopWorkspace` and contains 21 pinned Git submodules. Only the two submodules needed for this investigation were initialized locally; all submodule URLs/pins remain unchanged.

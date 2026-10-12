@@ -1,0 +1,106 @@
+diff --git "a/Loop/Views/CarbEntryView.swift" "b/Loop/Views/CarbEntryView.swift"
+--- "a/Loop/Views/CarbEntryView.swift"
++++ "b/Loop/Views/CarbEntryView.swift"
+@@ -10,6 +10,7 @@
+ import LoopKit
+ import LoopKitUI
+ import HealthKit
++import FoodRecognitionUI
+ 
+ struct CarbEntryView: View, HorizontalSizeClassOverride {
+     @EnvironmentObject private var displayGlucosePreference: DisplayGlucosePreference
+@@ -21,6 +22,7 @@
+     
+     @State private var showHowAbsorptionTimeWorks = false
+     @State private var showAddFavoriteFood = false
++    @State private var showMealReview = false
+     
+     private let isNewEntry: Bool
+ 
+@@ -90,6 +92,16 @@
+         .sheet(isPresented: $showAddFavoriteFood, onDismiss: clearExpandedRow) {
+             AddEditFavoriteFoodView(carbsQuantity: $viewModel.carbsQuantity.wrappedValue, foodType: $viewModel.foodType.wrappedValue, absorptionTime: $viewModel.absorptionTime.wrappedValue, onSave: onFavoriteFoodSave(_:))
+         }
++        .sheet(isPresented: $showMealReview) {
++            FoodRecognitionView(startsWithCamera: true) { meal in
++                if viewModel.applyPhotoReview(carbohydrateGrams: meal.carbohydrateGrams,
++                                             absorptionMinutes: meal.absorptionMinutes,
++                                             foodDescription: meal.foodDescription) {
++                    showMealReview = false
++                    clearExpandedRow()
++                }
++            }
++        }
+         .sheet(isPresented: $showHowAbsorptionTimeWorks) {
+             HowAbsorptionTimeWorksView()
+         }
+@@ -116,6 +128,15 @@
+             
+             AbsorptionTimePickerRow(absorptionTime: $viewModel.absorptionTime, isFocused: absorptionTimeFocused, validDurationRange: viewModel.absorptionRimesRange, showHowAbsorptionTimeWorks: $showHowAbsorptionTimeWorks)
+                 .padding(.bottom, 2)
++
++            if isNewEntry {
++                CardSectionDivider()
++                Button { showMealReview = true } label: {
++                    Label("Photograph meal", systemImage: "camera")
++                        .frame(maxWidth: .infinity, alignment: .leading)
++                }
++                .accessibilityIdentifier("photographMealInLoop")
++            }
+         }
+         .padding(.vertical, 12)
+         .padding(.horizontal)
+diff --git "a/Loop/View Models/CarbEntryViewModel.swift" "b/Loop/View Models/CarbEntryViewModel.swift"
+--- "a/Loop/View Models/CarbEntryViewModel.swift"
++++ "b/Loop/View Models/CarbEntryViewModel.swift"
+@@ -85,6 +85,7 @@
+     weak var delegate: CarbEntryViewModelDelegate?
+     
+     private lazy var cancellables = Set<AnyCancellable>()
++    private var favoriteFoodIndexObserver: AnyCancellable?
+     
+     /// Initalizer for when`CarbEntryView` is presented from the home screen
+     init(delegate: CarbEntryViewModelDelegate) {
+@@ -210,6 +211,27 @@
+         }
+     }
+     
++    /// Accept reviewed input without saving an entry or advancing to the bolus screen.
++    @MainActor
++    @discardableResult
++    func applyPhotoReview(carbohydrateGrams: Double, absorptionMinutes: Double, foodDescription: String) -> Bool {
++        guard carbohydrateGrams.isFinite, absorptionMinutes.isFinite,
++              0...maxCarbEntryQuantity.doubleValue(for: preferredCarbUnit) ~= carbohydrateGrams,
++              absorptionRimesRange.contains(absorptionMinutes * 60) else { return false }
++
++        // Cancel queued favorite changes before clearing the selection; they must not overwrite the review.
++        favoriteFoodIndexObserver?.cancel()
++        selectedFavoriteFoodIndex = -1
++        selectedDefaultAbsorptionTimeEmoji = ""
++        carbsQuantity = carbohydrateGrams
++        foodType = foodDescription
++        usesCustomFoodType = true
++        absorptionTime = absorptionMinutes * 60
++        absorptionTimeWasEdited = true
++        observeFavoriteFoodIndexChange()
++        return true
++    }
++
+     // MARK: - Favorite Foods
+     func onFavoriteFoodSave(_ food: NewFavoriteFood) {
+         let newStoredFood = StoredFavoriteFood(name: food.name, carbsQuantity: food.carbsQuantity, foodType: food.foodType, absorptionTime: food.absorptionTime)
+@@ -218,13 +240,12 @@
+     }
+     
+     private func observeFavoriteFoodIndexChange() {
+-        $selectedFavoriteFoodIndex
++        favoriteFoodIndexObserver = $selectedFavoriteFoodIndex
+             .receive(on: RunLoop.main)
+             .dropFirst()
+             .sink { [weak self] index in
+                 self?.favoriteFoodSelected(at: index)
+             }
+-            .store(in: &cancellables)
+     }
+     
+     private func observeFavoriteFoodChange() {

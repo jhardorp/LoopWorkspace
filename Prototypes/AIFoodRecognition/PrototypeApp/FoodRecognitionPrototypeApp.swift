@@ -1,4 +1,5 @@
 import SwiftUI
+import FoodRecognitionUI
 
 @main
 struct FoodRecognitionPrototypeApp: App {

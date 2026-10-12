@@ -1,0 +1,24 @@
+import File.join(ENV.fetch('GITHUB_WORKSPACE'), 'fastlane', 'Fastfile')
+
+platform :ios do
+  desc 'Build the pinned Loop integration and upload it for internal testing'
+  lane :upload_meal_review_loop do
+    authorization = Base64.strict_encode64("#{ENV.fetch('GITHUB_REPOSITORY_OWNER')}:#{ENV.fetch('GH_PAT')}")
+    puts "::add-mask::#{authorization}" if ENV['GITHUB_ACTIONS'] == 'true'
+    Dir.chdir(ENV.fetch('GITHUB_WORKSPACE')) { build_loop }
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch('FASTLANE_KEY_ID'),
+      issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
+      key_content: ENV.fetch('FASTLANE_KEY')
+    )
+    upload_to_testflight(
+      api_key: api_key,
+      app_identifier: "com.#{ENV.fetch('TEAMID')}.loopkit.Loop",
+      ipa: File.join(ENV.fetch('GITHUB_WORKSPACE'), 'Loop.ipa'),
+      skip_submission: true,
+      distribute_external: false,
+      skip_waiting_for_build_processing: true
+    )
+    UI.success('Integrated Loop build uploaded for internal TestFlight testing.')
+  end
+end

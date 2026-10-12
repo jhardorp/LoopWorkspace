@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import FoodRecognitionCore
 import SwiftUI
 import UIKit
@@ -41,6 +42,17 @@ final class PrototypeViewModel: ObservableObject {
 
     var canUseAI: Bool { connection.canAuthorize }
     var serverHost: String { connection.serverHost }
+    var hasPreconfiguredLogin: Bool { preconfiguredTesterCode != nil }
+
+    private var preconfiguredTesterCode: String? {
+        guard let code = Bundle.main.object(forInfoDictionaryKey: "LoopMealReviewTesterAccessCode") as? String,
+              (try? FoodBackendClient.validateTesterCode(code)) != nil else { return nil }
+        return code
+    }
+
+    var reviewedMeal: ReviewedMeal? {
+        draft.flatMap { ReviewedMeal(draft: $0) }
+    }
 
     func connect() {
         clear()
@@ -53,7 +65,14 @@ final class PrototypeViewModel: ObservableObject {
 
     func resume() {
         syncConnection()
-        guard hasSavedLogin, !connecting, state != .estimating else { return }
+        guard !connecting, state != .estimating else { return }
+        if !hasSavedLogin, let code = preconfiguredTesterCode {
+            runConnection { [connection] in
+                try await connection.connect(serverAddress: Self.defaultServerAddress, testerCode: code)
+            }
+            return
+        }
+        guard hasSavedLogin else { return }
         runConnection { [connection] in try await connection.authorizedSession() }
     }
 
@@ -247,3 +266,4 @@ private struct ConnectionKeychain: BackendConnectionStoring {
         guard status == errSecSuccess || status == errSecItemNotFound else { throw EstimationError.invalidConfiguration }
     }
 }
+#endif
