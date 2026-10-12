@@ -29,6 +29,10 @@ class ValidationReuseTests(unittest.TestCase):
         self.comparison["files"] *= 300
         self.assertFalse(reusable(self.run, self.jobs, self.comparison, self.source))
 
+    def test_renaming_application_code_to_documentation_still_requires_compilation(self):
+        self.comparison["files"] = [{"filename": "docs/renamed.md", "previous_filename": "Loop/Loop/Views/CarbEntryView.swift"}]
+        self.assertFalse(reusable(self.run, self.jobs, self.comparison, self.source))
+
 
 if __name__ == "__main__":
     unittest.main()

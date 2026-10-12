@@ -2,6 +2,8 @@
 
 ## Personal 0.4.0 builds and integrated Loop
 
+Apple accepted **Loop+ 0.4.0 (4)** in [run 38278695013](https://github.com/jhardorp/LoopWorkspace/actions/runs/38278695013) and **Loop 3.14.9 (18)** with integrated meal review in [run 38283878117](https://github.com/jhardorp/LoopWorkspace/actions/runs/38283878117). After Apple processing, update the relevant app in TestFlight. In Loop, open **Add Carb Entry → Photograph meal**, review the result and choose **Use in Loop**. The normal Continue flow remains next. No server address or tester password entry is required by these personal builds.
+
 The 0.4.0 Loop+ build preconfigures the server/tester login and displays the editable result above its explanations. The build-time tester-login step uses the existing `FOOD_TESTER_ACCESS_CODE` Actions secret; the tester login is present in the signed bundle but is never committed to source. OpenAI/Cloudflare provider keys remain server-side.
 
 The separate [Loop integration workflow](Integration/README.md) builds the existing feature branch's Loop 3.14.9 source with the camera/review UI. Its `Integration/request.json` controls validation/upload to the existing Loop app's internal TestFlight. Source changes do not install either app on a device. Apple processing still follows a successful upload.
@@ -10,7 +12,7 @@ The separate [Loop integration workflow](Integration/README.md) builds the exist
 
 The owner has an Apple Developer account and has explicitly authorized a separate prototype TestFlight upload. This is **Loop+**, with bundle ID **`com.jhardorp.foodrecognitionprototype`**. It does not replace or update the existing Loop app. The installed 0.1.0 build is mock-only. The 0.2.0 source adds opt-in OpenAI analysis, which requires [backend setup](Backend/SETUP.md) before real photos can be analyzed.
 
-**Latest confirmed upload: Loop+ 0.3.0 (3)** was accepted by App Store Connect on 2026-10-12 in [run 38271487237](https://github.com/jhardorp/LoopWorkspace/actions/runs/38271487237). All 41 Swift tests, 18 backend tests, four Ruby guards, unsigned iPhone compilation and signed export/upload passed. Apple processing and availability to the existing internal group are not verified by that lane. Once processed, select build 3 under **Jantest → Builds** if it is not assigned automatically, then update Loop+ in TestFlight. Enter the tester password once; the server address is prefilled and future authorization renews automatically.
+**Earlier confirmed upload: Loop+ 0.3.0 (3)** was accepted by App Store Connect on 2026-10-12 in [run 38271487237](https://github.com/jhardorp/LoopWorkspace/actions/runs/38271487237). All 41 Swift tests, 18 backend tests, four Ruby guards, unsigned iPhone compilation and signed export/upload passed. Apple processing and availability to the existing internal group are not verified by that lane. Once processed, select build 3 under **Jantest → Builds** if it is not assigned automatically, then update Loop+ in TestFlight. Enter the tester password once; the server address is prefilled and future authorization renews automatically.
 
 **Earlier AI upload: Loop+ 0.2.0 (2)** was accepted on 2026-10-11 in [run 38175789487](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175789487). That version stored only the server address and 30-minute token, so it required another login after expiry. Version 0.3.0 adds saved-password renewal while retaining per-photo consent.
 

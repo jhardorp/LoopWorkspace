@@ -1,5 +1,7 @@
 # Enable real photo analysis without a Mac
 
+**Personal builds now require no credential entry:** Apple accepted Loop+ **0.4.0 (4)** and integrated Loop **3.14.9 (18)** with the server/tester login preconfigured during signing. Their connections are saved on-device and renewed automatically. Use TestFlight to update after Apple processing; the setup instructions below describe server/account configuration and earlier app versions. See [the native integration](../Integration/README.md).
+
 The owner selected OpenAI, accepted small per-photo API charges and requested no additional monthly subscription. This setup uses **OpenAI prepaid API credits** and **Cloudflare Workers Free**, with a SQLite Durable Object for request counters. It does not buy a subscription or upgrade a hosting plan. ChatGPT subscription billing does not cover API use.
 
 The separate **Loop+ 0.2.0 (2)** upload was accepted by Apple in [run 38175789487](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175789487). On 2026-10-12, [configuration run 38208571429](https://github.com/jhardorp/LoopWorkspace/actions/runs/38208571429) confirmed all four owner-managed secrets are present and have valid basic formats. [Deployment run 38209167402](https://github.com/jhardorp/LoopWorkspace/actions/runs/38209167402) published the separate Worker, stored its secrets and verified its public health endpoint. Backend tests and dry-run checks passed before publication.

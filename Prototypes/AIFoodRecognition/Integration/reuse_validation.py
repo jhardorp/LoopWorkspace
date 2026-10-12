@@ -22,7 +22,10 @@ def reusable(run, jobs, comparison, expected_source):
     files = comparison.get("files", [])
     if len(files) >= 300 or comparison.get("total_commits", 0) > 10:
         return False
-    return all(item.get("filename") in ALLOWED or item.get("filename", "").endswith(".md") for item in files)
+    def allowed(path):
+        return path in ALLOWED or isinstance(path, str) and path.endswith(".md")
+    return all(allowed(item.get("filename")) and
+               ("previous_filename" not in item or allowed(item["previous_filename"])) for item in files)
 
 
 def api(path):
