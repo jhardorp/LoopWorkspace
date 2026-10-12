@@ -20,7 +20,7 @@ The existing Loop source belongs to upstream LoopKit. A pinned build overlay is 
 
 For a signing-only retry, a request can name the previously validated source/run. `reuse_validation.py` checks the source SHA, successful full compile step and changed-file list before reusing compilation. App source, package, overlay, submodule and code-to-documentation rename changes require a fresh compile. Local tests cover these cases. Raw simulator output is kept in the temporary runner log and only its tail is printed so signing diagnostics remain readable.
 
-The simulator compiler retries the same build once if its only errors are embedded framework copies missing generated `Info.plist` files. This lets an incremental build recopy completed plugin products after the workspace's parallel plugin build. Source errors, mixed failures and a failed second attempt remain failures; the retry never skips app validation. Five local tests cover recovery, unchanged build arguments and failure propagation.
+The temporary build checkout orders the Loop app after the workspace's plugin targets and disables parallel target builds. This prevents Loop's dynamic plugin-copy script from copying unfinished plugin bundles before their generated `Info.plist` files exist. Compilation within a target can still use multiple jobs. Tests cover target order, preserved target identifiers/configuration, repeated configuration and refusing missing/duplicate app entries. Both simulator and signed device builds use this scheme; validation is retained.
 
 ## No credential entry
 

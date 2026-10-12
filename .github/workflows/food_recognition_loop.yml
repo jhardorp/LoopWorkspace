@@ -26,7 +26,7 @@ jobs:
   loop:
     if: github.ref == 'refs/heads/feature/ai-food-recognition'
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
         with:
@@ -71,7 +71,7 @@ jobs:
           swift test --package-path Prototypes/AIFoodRecognition
           python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review_test.py
           python3 Prototypes/AIFoodRecognition/Integration/reuse_validation_test.py
-          python3 Prototypes/AIFoodRecognition/Integration/compile_simulator_test.py
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme_test.py
           ruby -c Prototypes/AIFoodRecognition/Integration/configure_project.rb
           ruby -c Prototypes/AIFoodRecognition/Integration/fastlane/Fastfile
       - name: Install existing pinned build tools
@@ -80,6 +80,7 @@ jobs:
         run: |
           python3 Prototypes/AIFoodRecognition/Integration/apply.py
           bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme.py
       - name: Verify whether the unchanged app already passed simulator compilation
         id: validation
         env:
@@ -87,7 +88,16 @@ jobs:
         run: python3 Prototypes/AIFoodRecognition/Integration/reuse_validation.py
       - name: Compile integrated Loop without signing
         if: steps.validation.outputs.reuse != 'true'
-        run: python3 Prototypes/AIFoodRecognition/Integration/compile_simulator.py
+        run: |
+          set +e
+          xcodebuild -workspace LoopWorkspace.xcworkspace \
+            -scheme LoopWorkspace \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/LoopMealReviewUnsigned" \
+            CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/LoopMealReviewCompile.log" 2>&1
+          result=$?
+          tail -n 150 "$RUNNER_TEMP/LoopMealReviewCompile.log"
+          exit "$result"
       - name: Preconfigure personal meal review login
         if: steps.request.outputs.operation == 'upload_testflight'
         env:
