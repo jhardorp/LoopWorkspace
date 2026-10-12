@@ -1,6 +1,6 @@
-diff --git "a/Loop/Views/CarbEntryView.swift" "b/Loop/Views/CarbEntryView.swift"
---- "a/Loop/Views/CarbEntryView.swift"
-+++ "b/Loop/Views/CarbEntryView.swift"
+diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
+--- a/Loop/Views/CarbEntryView.swift
++++ b/Loop/Views/CarbEntryView.swift
 @@ -10,6 +10,7 @@
  import LoopKit
  import LoopKitUI
@@ -17,7 +17,7 @@ diff --git "a/Loop/Views/CarbEntryView.swift" "b/Loop/Views/CarbEntryView.swift"
      
      private let isNewEntry: Bool
  
-@@ -90,6 +92,16 @@
+@@ -90,6 +92,18 @@
          .sheet(isPresented: $showAddFavoriteFood, onDismiss: clearExpandedRow) {
              AddEditFavoriteFoodView(carbsQuantity: $viewModel.carbsQuantity.wrappedValue, foodType: $viewModel.foodType.wrappedValue, absorptionTime: $viewModel.absorptionTime.wrappedValue, onSave: onFavoriteFoodSave(_:))
          }
@@ -28,13 +28,15 @@ diff --git "a/Loop/Views/CarbEntryView.swift" "b/Loop/Views/CarbEntryView.swift"
 +                                             foodDescription: meal.foodDescription) {
 +                    showMealReview = false
 +                    clearExpandedRow()
++                    return true
 +                }
++                return false
 +            }
 +        }
          .sheet(isPresented: $showHowAbsorptionTimeWorks) {
              HowAbsorptionTimeWorksView()
          }
-@@ -116,6 +128,15 @@
+@@ -116,6 +130,15 @@
              
              AbsorptionTimePickerRow(absorptionTime: $viewModel.absorptionTime, isFocused: absorptionTimeFocused, validDurationRange: viewModel.absorptionRimesRange, showHowAbsorptionTimeWorks: $showHowAbsorptionTimeWorks)
                  .padding(.bottom, 2)

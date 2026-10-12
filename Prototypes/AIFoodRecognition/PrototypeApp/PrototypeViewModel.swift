@@ -187,9 +187,11 @@ final class PrototypeViewModel: ObservableObject {
         })
     }
 
-    func finishReview() {
-        session.finishReview()
+    @discardableResult
+    func finishReview(using accept: (@MainActor (ReviewedMeal) -> Bool)? = nil) -> Bool {
+        let accepted = session.finishReview(accept: accept)
         sync()
+        return accepted
     }
 
     func clear() {
@@ -201,9 +203,10 @@ final class PrototypeViewModel: ObservableObject {
     }
 
     private func sync() {
-        state = session.state
+        // Publish the display state only after its editable values are ready.
         draft = session.draft
         reviewFinished = session.reviewFinished
+        state = session.state
     }
 
     private func syncConnection() {

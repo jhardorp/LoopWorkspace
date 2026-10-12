@@ -10,7 +10,7 @@ public struct FoodRecognitionView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     private let startsWithCamera: Bool
-    private let onUseMeal: (@MainActor (ReviewedMeal) -> Void)?
+    private let onUseMeal: (@MainActor (ReviewedMeal) -> Bool)?
     @State private var startedCamera = false
     @State private var showCamera = false
     @State private var cameraError: String?
@@ -19,12 +19,13 @@ public struct FoodRecognitionView: View {
     @State private var pendingUpload: UIImage?
     @State private var showUploadConsent = false
     @State private var uploadApproved = false
+    @State private var transferError: String?
     @State private var manualCarbs = ""
     @State private var manualMinutes = "180"
     @State private var manualFood = ""
     @State private var mealTime = Date()
 
-    public init(startsWithCamera: Bool = false, onUseMeal: (@MainActor (ReviewedMeal) -> Void)? = nil) {
+    public init(startsWithCamera: Bool = false, onUseMeal: (@MainActor (ReviewedMeal) -> Bool)? = nil) {
         self.startsWithCamera = startsWithCamera
         self.onUseMeal = onUseMeal
     }
@@ -34,8 +35,10 @@ public struct FoodRecognitionView: View {
             Group {
                 if case .reviewing(let estimate) = model.state {
                     review(estimate)
+                        .id("mealReviewResult")
                 } else {
                     entry
+                        .id("mealReviewEntry")
                 }
             }
             .navigationTitle(title)
@@ -196,6 +199,9 @@ public struct FoodRecognitionView: View {
     private func review(_ estimate: MealEstimate) -> some View {
         Form {
             Section(model.mode == .demo ? "Demo result" : "Meal result") {
+                Text("Photo estimate: \(estimate.carbohydrateGrams.value, specifier: "%.1f") g · \(estimate.absorptionMinutes.value, specifier: "%.0f") min")
+                    .font(.headline)
+                    .accessibilityIdentifier("mealEstimateSummary")
                 labeledField("Carbohydrates (g)", binding: model.binding(for: \.carbohydrateText, default: ""))
                     .accessibilityIdentifier("reviewCarbohydrates")
                 labeledField("Absorption duration (minutes)", binding: model.binding(for: \.absorptionMinutesText, default: ""))
@@ -205,14 +211,21 @@ public struct FoodRecognitionView: View {
                     Toggle("Reviewed estimate", isOn: model.binding(for: \.acknowledgesUncertainty, default: false))
                 }
                 Button(onUseMeal == nil ? "Finish review" : "Use in Loop") {
-                    guard let reviewed = model.reviewedMeal else { return }
-                    model.finishReview()
-                    if model.reviewFinished { onUseMeal?(reviewed) }
+                    transferError = nil
+                    if !model.finishReview(using: onUseMeal), onUseMeal != nil {
+                        transferError = "Loop could not accept these values. Your result is still here; review the amounts and try again."
+                    }
                 }
                 .disabled(!(model.draft?.canFinish(estimate: estimate) ?? false) || model.reviewedMeal == nil || model.reviewFinished)
                 .accessibilityIdentifier("finishReview")
                 if model.reviewFinished, onUseMeal == nil {
-                    Text("Review complete.").foregroundColor(.green)
+                    Text("Review complete. These values remain here for you to enter in Loop.").foregroundColor(.green)
+                }
+                if let error = transferError {
+                    Text(error).foregroundColor(.orange)
+                } else if estimate.confidence == .low, model.draft?.acknowledgesUncertainty != true {
+                    Text(onUseMeal == nil ? "Check the portion and values, then turn on Reviewed estimate to finish." : "Check the portion and values, then turn on Reviewed estimate to use them in Loop.")
+                        .font(.footnote).foregroundColor(.secondary)
                 }
             }
             Section("Estimated ranges") {
@@ -268,6 +281,7 @@ public struct FoodRecognitionView: View {
 
     private func discard() {
         model.clear()
+        transferError = nil
         pendingImage = nil
         pendingUpload = nil
         uploadApproved = false

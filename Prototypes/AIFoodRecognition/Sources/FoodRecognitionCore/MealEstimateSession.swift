@@ -53,9 +53,13 @@ public final class MealEstimateSession {
     }
 
     @discardableResult
-    public func finishReview(locale: Locale = .current) -> Bool {
+    public func finishReview(locale: Locale = .current, accept: (@MainActor (ReviewedMeal) -> Bool)? = nil) -> Bool {
         guard case .reviewing(let estimate) = state,
-              let draft, draft.canFinish(estimate: estimate, locale: locale) else { return false }
+              !reviewFinished,
+              let draft, draft.canFinish(estimate: estimate, locale: locale),
+              let meal = ReviewedMeal(draft: draft, locale: locale) else { return false }
+        // Keep the draft editable if its recipient rejects it. Completion means delivery succeeded.
+        if let accept, !accept(meal) { return false }
         reviewFinished = true
         return true
     }

@@ -4,6 +4,8 @@
 
 This feature branch adds **Photograph meal** to Loop's new carbohydrate-entry screen. The shared review screen shows editable carbohydrates, absorption minutes and meal notes at the top, followed by the estimated ranges, image, ingredients and explanations. **Use in Loop** copies only the reviewed input into the existing entry fields. The entry's time is preserved. Loop's existing Continue action, quantity validation, warnings, carb storage and bolus flow remain responsible for subsequent actions.
 
+The result screen starts at the top and displays the photo estimate directly above its editable fields. Draft values are populated before the screen changes to review. Low-confidence results explain the required **Reviewed estimate** checkbox. Completion requires Loop to accept the transfer: rejection keeps the numbers editable, displays a reason and leaves **Use in Loop** available for retry. Regression tests cover rejection/retry, edited locale values, duplicate delivery and invalid or unacknowledged input.
+
 The Loop screen always uses the real AI provider; the standalone mock demo cannot feed this integration. Cancellation, clarification and failed/invalid responses leave the existing entry unchanged. Editing a favorite before photographing a meal does not let a queued favorite-selection update overwrite the accepted review.
 
 ## Source and build
