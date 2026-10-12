@@ -12,6 +12,8 @@ https://loop-plus-meal-review.jan-1af.workers.dev
 
 An additional HTTPS check with app-style request headers returned `200` and `status: ready`. No paid OpenAI request was made. Provider access, API credit, the updated device installation and real photo analysis still require the owner's consented device trial. The owner creates provider credentials in their own browser; never share provider keys or commit credentials. Only the separate tester code is entered into the app, not the OpenAI/Cloudflare keys.
 
+Apple accepted **Loop+ 0.3.0 (3)** in [run 38271487237](https://github.com/jhardorp/LoopWorkspace/actions/runs/38271487237) after 41 Swift tests, 18 backend tests, four Ruby guards and iPhone compilation passed. This update prefills the address and remembers the tester password after one successful login. A retry of [backend run 38252740671](https://github.com/jhardorp/LoopWorkspace/actions/runs/38252740671) also completed publication/secret storage and verified `/health` after a transient Cloudflare timeout. The runtime redirect fix and owner-enabled operational observability were preserved.
+
 ## 1. OpenAI credits and key
 
 1. Open [OpenAI API billing](https://platform.openai.com/settings/organization/billing/overview) in Safari and log in.
