@@ -104,7 +104,7 @@ test("successful real transport uses current image only, structured output, boun
     calls++;
     assert.equal(url, "https://api.openai.com/v1/responses");
     assert.equal(init.headers.Authorization, `Bearer ${env.OPENAI_API_KEY}`);
-    assert.equal(init.redirect, "error");
+    assert.equal(init.redirect, "manual");
     const body = JSON.parse(init.body);
     assert.equal(body.store, false);
     assert.equal(body.background, false);

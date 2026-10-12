@@ -91,7 +91,8 @@ export function makeHandler({ providerFetch = fetch, now = () => Math.floor(Date
       try {
         const response = await providerFetch("https://api.openai.com/v1/responses", {
           method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.OPENAI_API_KEY}` },
-          redirect: "error",
+          // workerd supports manual/follow only. Reject redirects below instead of following them.
+          redirect: "manual",
           signal: controller.signal,
           body: JSON.stringify({
             model, store: false, background: false, max_output_tokens: 4000,

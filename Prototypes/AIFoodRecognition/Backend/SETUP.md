@@ -64,7 +64,7 @@ The first consented photo verifies live provider access. Tests use simulated rep
 - One provider request per accepted image, no automatic retry. JPEGs are capped at 1 MiB, replies at 256 KiB and output at 4,000 tokens. Charges follow [OpenAI API pricing](https://openai.com/api/pricing/) for the image-capable `gpt-4.1-2025-04-14` snapshot. Billing is based on tokens, not a fixed picture fee.
 - Accepted images consume quota even if the provider fails, times out, refuses or returns invalid JSON; some may still be billed. Cancellation cannot retract a received photo or guarantee a refund.
 - Workers Free and **SQLite** Durable Objects have free-tier limits; this configuration never upgrades the account automatically. If limits are reached the app reports failure. Counters store time windows/counts and salted login-IP digests, never photos, estimates, raw IPs or meal history.
-- The app/backend do not persist photos/reviews; Worker observability is disabled and application code logs no content/credentials. Network/provider services can still retain operational metadata under their policies.
+- The app/backend do not persist photos/reviews. Worker observability, enabled by the owner for troubleshooting, records operational request metadata; application code logs no photo content, reviews or credentials. Network/provider services can also retain operational metadata under their policies.
 - OpenAI receives only the current normalized photo and fixed prompt, with no CGM, prior meals, insulin, profile or dosing data. `store: false` does not eliminate default abuse-monitoring retention (normally up to 30 days) or other policy-governed retention. Read [OpenAI's data controls](https://developers.openai.com/api/docs/guides/your-data) before consent.
 - Disable requests by revoking the OpenAI key/removing its Worker secret, rotating the tester code or deleting this separate Worker. No Loop/signing/dosing change is required.
 
@@ -78,5 +78,7 @@ npx --no-install wrangler deploy --dry-run
 ```
 
 Wrangler is pinned in `package-lock.json`. Tests stub paid calls and cover auth, expiry/revocation, bounds, validation, timeouts/errors and quota concurrency/reset. Credentials are unnecessary for these checks.
+
+The runtime regression test also runs the actual handler in Cloudflare's local `workerd` runtime with simulated outbound responses. It covers a successful provider response and rejection of 302/307 redirects without following them or retrying. The provider fetch uses `redirect: "manual"`: `redirect: "error"` is unsupported by this runtime and otherwise causes an immediate 503 before any OpenAI request. Runtime tests require local loopback sockets; the separate GitHub Actions workflow runs them before deployment. They make no paid requests.
 
 References: [image input](https://developers.openai.com/api/docs/guides/images-vision), [structured output](https://developers.openai.com/api/docs/guides/structured-outputs), [separate API billing](https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform), [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/), [Durable Objects pricing/SQLite Free](https://developers.cloudflare.com/durable-objects/platform/pricing/).
