@@ -2,7 +2,15 @@
 
 The owner selected OpenAI, accepted small per-photo API charges and requested no additional monthly subscription. This setup uses **OpenAI prepaid API credits** and **Cloudflare Workers Free**, with a SQLite Durable Object for request counters. It does not buy a subscription or upgrade a hosting plan. ChatGPT subscription billing does not cover API use.
 
-The separate **Loop+ 0.2.0 (2)** upload was accepted by Apple in [run 38175789487](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175789487). The owner confirmed saving the OpenAI key in Actions secrets; **no live backend or paid model call is confirmed yet**. The assistant can prepare builds and start GitHub jobs; the owner must create provider credentials in their own browser. Never paste keys/access codes into chat, issues or source files. They never belong in the iPhone app.
+The separate **Loop+ 0.2.0 (2)** upload was accepted by Apple in [run 38175789487](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175789487). On 2026-10-12, [configuration run 38208571429](https://github.com/jhardorp/LoopWorkspace/actions/runs/38208571429) confirmed all four owner-managed secrets are present and have valid basic formats. [Deployment run 38209167402](https://github.com/jhardorp/LoopWorkspace/actions/runs/38209167402) published the separate Worker, stored its secrets and verified its public health endpoint. Backend tests and dry-run checks passed before publication.
+
+**Deployed server address for Loop+ 0.2.0:**
+
+```text
+https://loop-plus-meal-review.jan-1af.workers.dev
+```
+
+An additional HTTPS check with app-style request headers returned `200` and `status: ready`. No paid OpenAI request was made. Provider access, API credit, the updated device installation and real photo analysis still require the owner's consented device trial. The owner creates provider credentials in their own browser; never share provider keys or commit credentials. Only the separate tester code is entered into the app, not the OpenAI/Cloudflare keys.
 
 ## 1. OpenAI credits and key
 
@@ -15,8 +23,8 @@ The separate **Loop+ 0.2.0 (2)** upload was accepted by Apple in [run 3817578948
 
 1. Open [Cloudflare's dashboard](https://dash.cloudflare.com/) and create/log into your account. Use **Workers Free**; no custom domain or monthly hosting subscription is needed. Do not purchase an upgrade for this setup if prompted.
 2. In **Workers & Pages**, complete the free `workers.dev` subdomain setup if prompted. The app will use this HTTPS address.
-3. Copy the selected account's **Account ID** (32 characters) and save it in GitHub Actions secrets as **`CLOUDFLARE_ACCOUNT_ID`**.
-4. Open [API tokens](https://dash.cloudflare.com/profile/api-tokens), choose **Create Token → Edit Cloudflare Workers** and restrict account resources to this account. Keep the template's Worker deployment permissions, including scripts, account/subdomain settings and Durable Objects where applicable. No custom DNS zone is needed. Store the private token as **`CLOUDFLARE_API_TOKEN`** in GitHub Actions secrets.
+3. In the dashboard search, enter **Copy account ID** and select the result. Save the selected account's copied ID (32 characters) in GitHub Actions secrets as **`CLOUDFLARE_ACCOUNT_ID`**.
+4. Open **Manage account → [Account API tokens](https://dash.cloudflare.com/?to=/:account/api-tokens) → Create Token**. Under **Permission policies**, choose **Edit Cloudflare Workers** from the **Custom** dropdown and restrict account resources to this account. Keep the template's Worker deployment permissions, including scripts, account/subdomain settings and Durable Objects where applicable. No custom DNS zone is needed. Store the private token as **`CLOUDFLARE_API_TOKEN`** in GitHub Actions secrets.
 
 These credentials are used only by the separate backend workflow. Existing Apple/Loop signing secrets stay unchanged. Fix a deployment permission error on this restricted token rather than placing a Cloudflare global API key in the app.
 
@@ -28,7 +36,7 @@ The backend exchanges this code for a **30-minute token**. Only that token and U
 
 ## 4. Publish the prepared backend
 
-After these four secrets exist, tell the assistant **“The four AI secrets are saved.”** Include no values. The assistant can change `Backend/request.json` from `validate_only` to `deploy`, increase the revision and push only **`feature/ai-food-recognition`**. This starts [the separate backend workflow](https://github.com/jhardorp/LoopWorkspace/actions/workflows/food_recognition_backend.yml) without merging to `main`.
+After these four secrets exist, tell the assistant **“The four AI secrets are saved.”** Include no values. The assistant can set `Backend/request.json` to `deploy`, increase the revision and push only **`feature/ai-food-recognition`**. This starts [the separate backend workflow](https://github.com/jhardorp/LoopWorkspace/actions/workflows/food_recognition_backend.yml) without merging to `main`. The owner's first publication is complete in the run linked above; it does not need to be repeated to connect the app.
 
 Checks run first. The job publishes only **`loop-plus-meal-review`**, passes its two secrets to Wrangler through stdin, then verifies `/health`. The summary reports the HTTPS server address:
 
