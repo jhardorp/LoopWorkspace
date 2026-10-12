@@ -6,6 +6,8 @@ This feature branch adds **Photograph meal** to Loop's new carbohydrate-entry sc
 
 The result screen starts at the top and displays the photo estimate directly above its editable fields. Draft values are populated before the screen changes to review. Low-confidence results explain the required **Reviewed estimate** checkbox. Completion requires Loop to accept the transfer: rejection keeps the numbers editable, displays a reason and leaves **Use in Loop** available for retry. Regression tests cover rejection/retry, edited locale values, duplicate delivery and invalid or unacknowledged input.
 
+The consent button starts analysis before closing the confirmation sheet. UIKit application state and notifications handle active/background transitions in both Loop's UIKit host and the standalone SwiftUI app. Sheet dismissal only clears the pending capture; it neither starts an upload nor relies on a SwiftUI scene phase supplied by the host.
+
 The Loop screen always uses the real AI provider; the standalone mock demo cannot feed this integration. Cancellation, clarification and failed/invalid responses leave the existing entry unchanged. Editing a favorite before photographing a meal does not let a queued favorite-selection update overwrite the accepted review.
 
 ## Source and build

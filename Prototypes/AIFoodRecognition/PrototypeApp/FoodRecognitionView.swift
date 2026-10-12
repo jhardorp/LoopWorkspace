@@ -7,7 +7,6 @@ import UIKit
 @MainActor
 public struct FoodRecognitionView: View {
     @StateObject private var model = PrototypeViewModel()
-    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     private let startsWithCamera: Bool
     private let onUseMeal: (@MainActor (ReviewedMeal) -> Bool)?
@@ -18,7 +17,6 @@ public struct FoodRecognitionView: View {
     @State private var pendingImage: UIImage?
     @State private var pendingUpload: UIImage?
     @State private var showUploadConsent = false
-    @State private var uploadApproved = false
     @State private var transferError: String?
     @State private var manualCarbs = ""
     @State private var manualMinutes = "180"
@@ -58,7 +56,6 @@ public struct FoodRecognitionView: View {
                 pendingImage = nil
                 if model.mode == .openAI {
                     pendingUpload = image
-                    uploadApproved = false
                     showUploadConsent = true
                 } else { model.analyze(image) }
             }
@@ -77,22 +74,18 @@ public struct FoodRecognitionView: View {
             Text(cameraError ?? "")
         }
         .sheet(isPresented: $showUploadConsent, onDismiss: {
-            let image = pendingUpload
-            let approved = uploadApproved && scenePhase == .active && model.mode == .openAI
             pendingUpload = nil
-            uploadApproved = false
-            if approved, let image { model.analyze(image, consentToUpload: true) }
         }) {
             uploadConfirmation
         }
-        .onChange(of: scenePhase) { phase in
-            if phase == .background {
-                discard()
-                model.pause()
-                showCamera = false
-            } else if phase == .active {
-                model.resume()
-            }
+        // UIKit hosts do not reliably supply SwiftUI's scenePhase environment.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            discard()
+            model.pause()
+            showCamera = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            model.resume()
         }
         .onAppear { model.resume(); startCameraIfRequested() }
         .onChange(of: model.canUseAI) { _ in startCameraIfRequested() }
@@ -116,10 +109,14 @@ public struct FoodRecognitionView: View {
                     Text("Nutrition and absorption duration are uncertain estimates. Review portions and ingredients before editing the values.")
                     Link("Read OpenAI's data policy", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
                     Button("Analyze this photo") {
-                        uploadApproved = true
+                        guard UIApplication.shared.applicationState == .active,
+                              model.mode == .openAI, let image = pendingUpload else { return }
+                        // Start from the explicit tap; dismissal must never initiate or cancel consent.
+                        model.analyze(image, consentToUpload: true)
                         showUploadConsent = false
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(pendingUpload == nil || model.state == .estimating)
                     .accessibilityIdentifier("confirmPhotoUpload")
                 }
                 .padding()
@@ -284,7 +281,6 @@ public struct FoodRecognitionView: View {
         transferError = nil
         pendingImage = nil
         pendingUpload = nil
-        uploadApproved = false
         showUploadConsent = false
         manualCarbs = ""
         manualMinutes = "180"
@@ -308,7 +304,7 @@ public struct FoodRecognitionView: View {
             Task { @MainActor in
                 let allowed = await AVCaptureDevice.requestAccess(for: .video)
                 requestingCamera = false
-                guard scenePhase == .active else { return }
+                guard UIApplication.shared.applicationState == .active else { return }
                 if allowed { showCamera = true }
                 else { cameraError = "Camera access was denied. You can allow access in Settings or use the demo meal button." }
             }

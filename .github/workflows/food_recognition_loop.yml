@@ -20,7 +20,7 @@ permissions:
 
 concurrency:
   group: loop-meal-review-integration
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   loop:
