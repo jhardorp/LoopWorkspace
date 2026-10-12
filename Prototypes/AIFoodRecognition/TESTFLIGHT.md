@@ -2,7 +2,7 @@
 
 ## Personal 0.4.0 builds and integrated Loop
 
-Apple accepted **Loop+ 0.4.0 (4)** in [run 38278695013](https://github.com/jhardorp/LoopWorkspace/actions/runs/38278695013) and **Loop 3.14.9 (18)** with integrated meal review in [run 38283878117](https://github.com/jhardorp/LoopWorkspace/actions/runs/38283878117). After Apple processing, update the relevant app in TestFlight. In Loop, open **Add Carb Entry → Photograph meal**, review the result and choose **Use in Loop**. The normal Continue flow remains next. No server address or tester password entry is required by these personal builds.
+Apple accepted **Loop+ 0.4.0 (4)** in [run 38278695013](https://github.com/jhardorp/LoopWorkspace/actions/runs/38278695013) and **Loop 3.14.9 (20)** with integrated meal review in [run 38305401722](https://github.com/jhardorp/LoopWorkspace/actions/runs/38305401722). After Apple processing, update the relevant app in TestFlight. In Loop, open **Add Carb Entry → Photograph meal**, review the values, turn on **Reviewed estimate** when shown, and choose **Use in Loop**. The normal Continue flow remains next. No server address or tester password entry is required by these personal builds.
 
 The 0.4.0 Loop+ build preconfigures the server/tester login and displays the editable result above its explanations. The build-time tester-login step uses the existing `FOOD_TESTER_ACCESS_CODE` Actions secret; the tester login is present in the signed bundle but is never committed to source. OpenAI/Cloudflare provider keys remain server-side.
 

@@ -1,6 +1,6 @@
 # Meal photo review inside Loop
 
-**Uploaded: Loop 3.14.9 (18).** Apple accepted the integrated, preconfigured personal build in [run 38283878117](https://github.com/jhardorp/LoopWorkspace/actions/runs/38283878117). Its app/driver/Watch archive and signed export passed. The full simulator build passed in [run 38278695063](https://github.com/jhardorp/LoopWorkspace/actions/runs/38278695063); the upload retry verified that the app source was unchanged before reusing that result. Apple processing and the phone update are separate from upload.
+**Uploaded: Loop 3.14.9 (20).** Apple accepted the final personal build in [run 38305401722](https://github.com/jhardorp/LoopWorkspace/actions/runs/38305401722). All 46 Swift tests, configuration checks, full simulator compilation, device/Watch archive, signed export and internal TestFlight upload passed. This build starts consented analysis directly from the button, observes UIKit activity and displays the estimate above the editable values. Apple processing and the phone update are separate from upload.
 
 This feature branch adds **Photograph meal** to Loop's new carbohydrate-entry screen. The shared review screen shows editable carbohydrates, absorption minutes and meal notes at the top, followed by the estimated ranges, image, ingredients and explanations. **Use in Loop** copies only the reviewed input into the existing entry fields. The entry's time is preserved. Loop's existing Continue action, quantity validation, warnings, carb storage and bolus flow remain responsible for subsequent actions.
 
