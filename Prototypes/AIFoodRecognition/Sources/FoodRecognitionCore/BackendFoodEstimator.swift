@@ -49,11 +49,7 @@ public struct FoodBackendClient: Sendable {
     }
 
     public func connect(testerCode: String) async throws -> BackendSession {
-        // Prevent accidentally sending a provider API key to an app-login endpoint.
-        guard (32...256).contains(testerCode.utf8.count), !testerCode.hasPrefix("sk-"),
-              !testerCode.contains(where: { $0.isWhitespace }) else {
-            throw EstimationError.invalidConfiguration
-        }
+        try Self.validateTesterCode(testerCode)
         var request = makeRequest(path: "v1/session")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(LoginRequest(accessCode: testerCode))
@@ -68,6 +64,14 @@ public struct FoodBackendClient: Sendable {
             throw EstimationError.invalidResponse
         }
         return session
+    }
+
+    static func validateTesterCode(_ testerCode: String) throws {
+        // Prevent accidentally sending a provider API key to an app-login endpoint.
+        guard (32...256).contains(testerCode.utf8.count), !testerCode.hasPrefix("sk-"),
+              !testerCode.contains(where: { $0.isWhitespace }) else {
+            throw EstimationError.invalidConfiguration
+        }
     }
 
     public func estimate(photo: MealPhoto, session: BackendSession) async throws -> EstimationOutcome {

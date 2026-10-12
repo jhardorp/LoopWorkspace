@@ -4,6 +4,8 @@ Loop+ is a **separate iPhone meal-review app**, not a modified Loop installation
 
 The preview mirrors amount, time, food type and absorption duration from Loop's carbohydrate-entry screen. It does **not** yet add a camera button to Loop's actual screen. See [repository inspection and fork decision](../../docs/ai-food-recognition.md).
 
+**0.3.0 remembered login:** the owner requested routine use without re-entering a server address or password. The public Loop+ server address is prefilled. Enter the separate tester password once; the app stores it in device-only Keychain storage and renews its 30-minute authorization automatically on foreground/use. An upgrade from 0.2.0 preserves the saved address but needs the password once because that older version did not retain it. The 0.3.0 upload/device availability is pending verification.
+
 ## Scope and isolation
 
 - No Loop, LoopKit, HealthKit, CGM, historical meal, insulin, pump or therapy-store dependency. No dosing-algorithm or insulin-delivery changes.
@@ -11,7 +13,7 @@ The preview mirrors amount, time, food type and absorption duration from Loop's 
 - Separate project/scheme/app identifier. Unsigned builds use `org.loopprototype.FoodRecognitionSandbox`; the authorized TestFlight workflow signs only `com.jhardorp.foodrecognitionprototype`. Loop's installation, workspace, version, submodule pins, signing configuration and `main` remain unchanged.
 - Each real photo requires upload confirmation. Only the current JPEG is sent, with no previous meal or therapy data. It is redrawn to at most 1280 pixels, omits original EXIF/location metadata and is capped at 1 MiB for remote requests.
 - Photos/reviews are not persisted, logged, sent to analytics or saved in Photos. Discard, a new request and backgrounding clear the current review/photo. Camera/consent cancellation clears pending captures; dismissing consent without approval does not upload. Backgrounding cancels an in-flight request, but cannot retract a photo already received by a service.
-- Only the URL and a 30-minute app session token are stored in this app's device-only Keychain, accessible while unlocked. The tester code is cleared after submission. Disconnect removes the token; the OpenAI API key never enters the app.
+- In 0.3.0, the URL, separate tester password and 30-minute app token are stored in this app's device-only Keychain, accessible while unlocked and without iCloud synchronization. The password field is cleared after submission. The app renews authorization with the saved password; it never automatically retries a photo. **Forget saved login** cancels pending renewal and deletes the saved connection. A changed/revoked password requires new one-time setup. The OpenAI API key never enters the app.
 - The backend does not persist images/estimates and sends OpenAI `store: false`. This **does not** promise zero provider retention: OpenAI's data policy, including abuse-monitoring retention, applies and is linked before upload. Cloudflare also processes network traffic and operational/account metadata under its terms.
 
 ## Estimates and uncertainty
@@ -64,7 +66,7 @@ On 2026-10-11, 28 Swift core tests passed locally with Swift 6.0.3 on Linux and 
 
 Manual checks for the separately authorized owner trial:
 
-1. In OpenAI mode, connect with the deployed HTTPS URL and separate tester code. Check wrong/expired credentials and Disconnect. Provider keys entered as tester codes are rejected before network access.
+1. In OpenAI mode, confirm the server address is prefilled under **Service settings**. Enter the separate tester password once. Quit/reopen and background/foreground after more than 30 minutes: authorization renews without re-entering either value. Check offline/revoked credentials and **Forget saved login**. Provider keys entered as tester codes are rejected before network access. Upgrade from 0.2.0 keeps its saved address and needs the password once.
 2. Capture a photo and Cancel/swipe away the upload preview: no estimate request should occur. Backgrounding during capture/consent clears the pending image. Approval sends one photo only.
 3. With a configured backend and credits, photograph an actual meal with a useful portion reference. Verify foods reflect the image, uncertainty/experimental labels appear and both estimates are editable. Low confidence requires acknowledgment.
 4. Try an unreadable photo, offline connection, revoked token and exhausted quota. Expect explanations/clarification without mock numbers. A paid request may still consume credits after local cancellation.
@@ -79,3 +81,5 @@ Manual checks for the separately authorized owner trial:
 Backend checks also passed on GitHub in [validate-only run 38174675553](https://github.com/jhardorp/LoopWorkspace/actions/runs/38174675553), without server credentials, deployment or paid provider requests.
 
 The updated macOS core tests, four Ruby guards, unsigned iPhone simulator build and backend checks passed in [PR run 38175329086](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175329086). The separately authorized 0.2.0 (2) signed build/upload also passed in [run 38175789487](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175789487). The log confirms App Store Connect accepted the package; it does not verify Apple processing, internal tester availability or a device update.
+
+For 0.3.0, all **41 Swift tests** passed locally with Swift 6.0.3 and container networking disabled. The 13 new saved-login tests cover one-time setup/relaunch, expired/near-expiry renewal, legacy migration, shared concurrent renewal, offline retention without retry loops, revocation, logout/background cancellation, server/code binding, provider-key rejection, storage failure and invalidated-token renewal. macOS compilation and the new separate TestFlight upload still require CI verification.

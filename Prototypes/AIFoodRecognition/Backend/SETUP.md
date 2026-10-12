@@ -4,7 +4,7 @@ The owner selected OpenAI, accepted small per-photo API charges and requested no
 
 The separate **Loop+ 0.2.0 (2)** upload was accepted by Apple in [run 38175789487](https://github.com/jhardorp/LoopWorkspace/actions/runs/38175789487). On 2026-10-12, [configuration run 38208571429](https://github.com/jhardorp/LoopWorkspace/actions/runs/38208571429) confirmed all four owner-managed secrets are present and have valid basic formats. [Deployment run 38209167402](https://github.com/jhardorp/LoopWorkspace/actions/runs/38209167402) published the separate Worker, stored its secrets and verified its public health endpoint. Backend tests and dry-run checks passed before publication.
 
-**Deployed server address for Loop+ 0.2.0:**
+**Deployed server address for Loop+:**
 
 ```text
 https://loop-plus-meal-review.jan-1af.workers.dev
@@ -32,7 +32,7 @@ These credentials are used only by the separate backend workflow. Existing Apple
 
 Use your password manager to generate a new random password of at least **32 characters**, without spaces. It must differ from your OpenAI key/Apple password. Save it privately for iPhone login and add it to GitHub Actions secrets as **`FOOD_TESTER_ACCESS_CODE`**.
 
-The backend exchanges this code for a **30-minute token**. Only that token and URL are saved in Loop+'s own device-only Keychain; the code is not compiled into or saved by the app. Rotating the server code revokes existing sessions. Its holder can spend the prototype's limited credits, so keep it private.
+The backend exchanges this code for a **30-minute token**. In **0.3.0**, enter the code once: Loop+ stores the tester code, URL and token in its own device-only Keychain, accessible while unlocked and without iCloud synchronization. It renews authorization automatically using the saved code. The code is never compiled into the app; the OpenAI API key stays on the server. **Forget saved login** cancels pending authorization and removes the saved connection. Rotating the server code revokes existing sessions and requires entering the new code once. Its holder can spend the prototype's limited credits, so keep it private. The older 0.2.0 app stored only the token/URL and could not renew without re-entry.
 
 ## 4. Publish the prepared backend
 
@@ -50,9 +50,9 @@ The separate `check_configuration` operation reports which of the four Actions s
 
 ## 5. Update Loop+ and try one photo
 
-When the separate **0.2.0** upload is confirmed and Apple processing finishes, update **Loop+** in TestFlight. Keep the original Loop app separate.
+When the separate **0.3.0** upload is confirmed and Apple processing finishes, update **Loop+** in TestFlight. Keep the original Loop app separate. This update adds remembered login and uses the already deployed backend; it needs no server re-deployment.
 
-1. Select **OpenAI photo analysis**, paste the server URL from the workflow summary and enter your tester code. Tap **Connect to AI service**.
+1. Select **OpenAI photo analysis**, enter your tester password once and tap **Connect to AI service**. The deployed address is prefilled under **Service settings**. A 0.2.0 upgrade keeps its saved address but needs the password once because the old version did not save it. Routine use/relaunch renews authorization automatically; only forgetting the login, changing/revoking the password or losing the device's saved credentials requires new setup.
 2. Tap **Photograph meal**, photograph the actual meal with a portion reference and inspect the preview. Tap **Analyze this photo** only when you want this image uploaded to the backend/OpenAI.
 3. Review foods/portions, carbs and the **experimental** absorption duration. Edit both values and acknowledge uncertainty. Finishing/discarding stays entirely in this standalone review; nothing goes to Loop or calculates/delivers insulin.
 

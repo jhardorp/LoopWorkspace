@@ -10,6 +10,8 @@ The owner has an Apple Developer account and has explicitly authorized a separat
 
 **Owner device check:** the owner subsequently supplied App Store Connect screenshots showing completed processing and an internal group with one tester and one build, then confirmed installation. A device screenshot shows a captured photo in the mock review. This confirms the standalone installation and capture/review path; the food estimates remain fictional and unrelated to the photo. It does not validate real recognition, numerical accuracy, or all camera/accessibility cases.
 
+**0.3.0 remembered-login update:** prepared at the owner's request so routine use requires neither address nor password entry. The server address is prefilled; after entering the tester password once, it is stored in device-only Keychain storage and app authorization renews automatically. Updating 0.2.0 preserves its address but requires the password once because that version did not save it. **Forget saved login** removes the saved connection. All 41 Swift tests passed locally, including 13 renewal/storage/cancellation/migration tests. The new macOS build/upload and device availability are pending verification.
+
 ## What runs on GitHub
 
 The `Separate food prototype TestFlight` workflow runs on a GitHub-hosted Mac from **`feature/ai-food-recognition`**, without merging to `main`. It uses a separate Fastfile and the standalone project. It never checks out the Loop submodules or calls Loop's build/release/certificate-renewal lanes.

@@ -73,8 +73,11 @@ struct FoodRecognitionView: View {
                 discard()
                 model.pause()
                 showCamera = false
+            } else if phase == .active {
+                model.resume()
             }
         }
+        .onAppear { model.resume() }
     }
 
     private var title: String {
@@ -300,21 +303,34 @@ struct FoodRecognitionView: View {
 
     private var connection: some View {
         Section("AI connection") {
-            if model.canUseAI {
-                Label("Connected to \(model.serverHost)", systemImage: "checkmark.circle")
-                if let expiry = model.sessionExpiry { Text("Login expires at \(expiry, style: .time).").font(.footnote) }
-                Button("Disconnect", role: .destructive) { model.disconnect() }
+            if model.hasSavedLogin {
+                Label("Login saved on this iPhone", systemImage: "checkmark.circle")
+                Text("Your connection renews automatically. You can photograph meals without entering your password again.")
+                    .font(.footnote).foregroundColor(.secondary)
+                Button("Forget saved login", role: .destructive) { model.disconnect() }
             } else {
-                TextField("HTTPS server address", text: $model.serverAddress)
-                    .keyboardType(.URL).textInputAutocapitalization(.never).disableAutocorrection(true)
-                SecureField("Tester access code", text: $model.testerCode)
+                SecureField("Tester password (one-time setup)", text: $model.testerCode)
                     .textInputAutocapitalization(.never).disableAutocorrection(true)
-                Text("Use the separate tester code. Your OpenAI API key belongs in server secret storage.")
+                Text("Enter the separate tester password once. It is saved securely on this iPhone after you connect.")
                     .font(.footnote).foregroundColor(.secondary)
                 Button("Connect to AI service") { model.connect() }.disabled(model.connecting)
+                DisclosureGroup("Service settings") {
+                    TextField("HTTPS server address", text: $model.serverAddress)
+                        .keyboardType(.URL).textInputAutocapitalization(.never).disableAutocorrection(true)
+                        .disabled(model.connecting)
+                    Text("The Loop+ address is already filled in. Keep your OpenAI API key on the server.")
+                        .font(.footnote).foregroundColor(.secondary)
+                }
             }
             if model.connecting { ProgressView("Connecting…") }
-            if let error = model.connectionError { Text(error).foregroundColor(.orange) }
+            if let error = model.connectionError {
+                Text(error).foregroundColor(.orange)
+                if model.hasSavedLogin {
+                    Button("Retry connection") { model.resume() }.disabled(model.connecting)
+                }
+            } else if case .failed(.authenticationRequired) = model.state, model.hasSavedLogin {
+                Button("Retry connection") { model.resume() }.disabled(model.connecting)
+            }
             Text("OpenAI requests consume API credits. The prototype backend allows up to 10 photos per day and 3 per minute. Failed provider requests also count; there are no automatic retries.")
                 .font(.footnote).foregroundColor(.secondary)
             Link("OpenAI photo data policy", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
