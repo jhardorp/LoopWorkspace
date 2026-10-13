@@ -9,18 +9,28 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
  
  struct CarbEntryView: View, HorizontalSizeClassOverride {
      @EnvironmentObject private var displayGlucosePreference: DisplayGlucosePreference
-@@ -21,6 +22,7 @@
+@@ -21,6 +22,9 @@
      
      @State private var showHowAbsorptionTimeWorks = false
      @State private var showAddFavoriteFood = false
 +    @State private var showMealReview = false
++    @FocusState private var foodDescriptionFocused: Bool
++    @State private var usesFoodDescriptionEditor = false
      
      private let isNewEntry: Bool
  
-@@ -90,6 +92,18 @@
+@@ -87,8 +91,25 @@
+             }
+         }
+         .alert(item: $viewModel.alert, content: alert(for:))
++        .onChange(of: expandedRow) { row in
++            if row != .foodType {
++                foodDescriptionFocused = false
++            }
++        }
          .sheet(isPresented: $showAddFavoriteFood, onDismiss: clearExpandedRow) {
              AddEditFavoriteFoodView(carbsQuantity: $viewModel.carbsQuantity.wrappedValue, foodType: $viewModel.foodType.wrappedValue, absorptionTime: $viewModel.absorptionTime.wrappedValue, onSave: onFavoriteFoodSave(_:))
-         }
++        }
 +        .sheet(isPresented: $showMealReview) {
 +            FoodRecognitionView(startsWithCamera: true) { meal in
 +                if viewModel.applyPhotoReview(carbohydrateGrams: meal.carbohydrateGrams,
@@ -32,11 +42,21 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
 +                }
 +                return false
 +            }
-+        }
+         }
          .sheet(isPresented: $showHowAbsorptionTimeWorks) {
              HowAbsorptionTimeWorksView()
-         }
-@@ -116,6 +130,15 @@
+@@ -110,12 +131,25 @@
+             
+             CardSectionDivider()
+             
+-            FoodTypeRow(foodType: $viewModel.foodType, absorptionTime: $viewModel.absorptionTime, selectedDefaultAbsorptionTimeEmoji: $viewModel.selectedDefaultAbsorptionTimeEmoji, usesCustomFoodType: $viewModel.usesCustomFoodType, absorptionTimeWasEdited: $viewModel.absorptionTimeWasEdited, isFocused: foodTypeFocused, defaultAbsorptionTimes: viewModel.defaultAbsorptionTimes)
++            if viewModel.usesCustomFoodType && (usesFoodDescriptionEditor || viewModel.foodType.contains(where: { $0.isLetter || $0.isNumber })) {
++                foodDescriptionRow
++            } else {
++                FoodTypeRow(foodType: $viewModel.foodType, absorptionTime: $viewModel.absorptionTime, selectedDefaultAbsorptionTimeEmoji: $viewModel.selectedDefaultAbsorptionTimeEmoji, usesCustomFoodType: $viewModel.usesCustomFoodType, absorptionTimeWasEdited: $viewModel.absorptionTimeWasEdited, isFocused: foodTypeFocused, defaultAbsorptionTimes: viewModel.defaultAbsorptionTimes)
++            }
+             
+             CardSectionDivider()
              
              AbsorptionTimePickerRow(absorptionTime: $viewModel.absorptionTime, isFocused: absorptionTimeFocused, validDurationRange: viewModel.absorptionRimesRange, showHowAbsorptionTimeWorks: $showHowAbsorptionTimeWorks)
                  .padding(.bottom, 2)
@@ -52,6 +72,64 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
          }
          .padding(.vertical, 12)
          .padding(.horizontal)
+@@ -133,7 +167,57 @@
+     }
+     
+     private func clearExpandedRow() {
++        foodDescriptionFocused = false
+         self.expandedRow = nil
++    }
++
++    private var foodDescriptionRow: some View {
++        VStack(alignment: .leading, spacing: 4) {
++            Text(foodTypeTitle)
++                .font(.subheadline)
++                .foregroundColor(.secondary)
++
++            foodDescriptionField
++                .font(.body)
++                .focused($foodDescriptionFocused)
++                .accessibilityLabel(Text(foodTypeTitle))
++                .accessibilityIdentifier("mealFoodDescriptionInLoop")
++        }
++        .frame(maxWidth: .infinity, alignment: .leading)
++        .onAppear {
++            // Keep the multiline editor when its text is cleared, and preserve an active editing session.
++            usesFoodDescriptionEditor = true
++            foodDescriptionFocused = expandedRow == .foodType
++        }
++        .onChange(of: foodDescriptionFocused) { focused in
++            if focused {
++                expandedRow = .foodType
++            }
++        }
++        .toolbar {
++            if foodDescriptionFocused {
++                ToolbarItemGroup(placement: .keyboard) {
++                    Spacer()
++                    Button("Done", action: clearExpandedRow)
++                }
++            }
++        }
++    }
++
++    @ViewBuilder
++    private var foodDescriptionField: some View {
++        if #available(iOS 16.0, *) {
++            TextField("", text: $viewModel.foodType, axis: .vertical)
++                .lineLimit(1...)
++                .fixedSize(horizontal: false, vertical: true)
++        } else {
++            TextEditor(text: $viewModel.foodType)
++                .frame(height: 100)
++        }
++    }
++
++    private var foodTypeTitle: String {
++        NSLocalizedString("Food Type", bundle: Bundle(for: EmojiInputController.self), comment: "Label for the food type row on the carb entry screen")
+     }
+ }
+ 
 diff --git "a/Loop/View Models/CarbEntryViewModel.swift" "b/Loop/View Models/CarbEntryViewModel.swift"
 --- "a/Loop/View Models/CarbEntryViewModel.swift"
 +++ "b/Loop/View Models/CarbEntryViewModel.swift"
@@ -106,3 +184,53 @@ diff --git "a/Loop/View Models/CarbEntryViewModel.swift" "b/Loop/View Models/Car
      }
      
      private func observeFavoriteFoodChange() {
+diff --git a/Loop/Views/BolusEntryView.swift b/Loop/Views/BolusEntryView.swift
+--- a/Loop/Views/BolusEntryView.swift
++++ b/Loop/Views/BolusEntryView.swift
+@@ -198,19 +198,34 @@
+ 
+     @ViewBuilder
+     private var potentialCarbEntryRow: some View {
+-        if viewModel.carbEntryAmountAndEmojiString != nil && viewModel.carbEntryDateAndAbsorptionTimeString != nil {
+-            HStack {
+-                Text("Carb Entry", comment: "Label for carb entry row on bolus screen")
+-
+-                Text(viewModel.carbEntryAmountAndEmojiString!)
+-                    .foregroundColor(Color(.carbTintColor))
+-                    .modifier(LabelBackground())
+-
+-                Spacer()
+-
+-                Text(viewModel.carbEntryDateAndAbsorptionTimeString!)
++        if let entry = viewModel.potentialCarbEntry,
++           let amount = QuantityFormatter(for: .gram()).string(from: entry.quantity),
++           let time = viewModel.carbEntryDateAndAbsorptionTimeString {
++            VStack(alignment: .leading, spacing: 6) {
++                HStack(alignment: .firstTextBaseline) {
++                    Text("Carb Entry", comment: "Label for carb entry row on bolus screen")
++                    Spacer(minLength: 8)
++                    Text(verbatim: amount)
++                        .foregroundColor(Color(.carbTintColor))
++                        .modifier(LabelBackground())
++                }
++
++                Text(verbatim: time)
++                    .font(.subheadline)
+                     .foregroundColor(Color(.secondaryLabel))
+-            }
++                    .fixedSize(horizontal: false, vertical: true)
++
++                if let food = entry.foodType ?? viewModel.selectedCarbAbsorptionTimeEmoji, !food.isEmpty {
++                    Text(verbatim: food)
++                        .foregroundColor(Color(.carbTintColor))
++                        .lineLimit(nil)
++                        .multilineTextAlignment(.leading)
++                        .fixedSize(horizontal: false, vertical: true)
++                        .frame(maxWidth: .infinity, alignment: .leading)
++                }
++            }
++            .frame(maxWidth: .infinity, alignment: .leading)
++            .accessibilityElement(children: .combine)
+         }
+     }
+ 
