@@ -8,6 +8,7 @@ import UIKit
 public struct FoodRecognitionView: View {
     @StateObject private var model = PrototypeViewModel()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let startsWithCamera: Bool
     private let onUseMeal: (@MainActor (ReviewedMeal) -> Bool)?
     @State private var startedCamera = false
@@ -143,15 +144,28 @@ public struct FoodRecognitionView: View {
         }
     }
 
+    @ViewBuilder
     private func review(_ estimate: MealEstimate) -> some View {
-        Form {
+        if #available(iOS 17.0, *) {
+            reviewList(estimate).listSectionSpacing(12)
+        } else {
+            reviewList(estimate)
+        }
+    }
+
+    private var reviewRowInsets: EdgeInsets {
+        EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16)
+    }
+
+    private func reviewList(_ estimate: MealEstimate) -> some View {
+        List {
             Section(model.mode == .demo ? "Demo result" : "Meal result") {
                 Text("Photo estimate: \(estimate.carbohydrateGrams.value, specifier: "%.1f") g · \(estimate.absorptionMinutes.value, specifier: "%.0f") min")
                     .font(.headline)
                     .accessibilityIdentifier("mealEstimateSummary")
-                labeledField("Carbohydrates (g)", binding: model.binding(for: \.carbohydrateText, default: ""))
+                labeledField("Carbohydrates", unit: "g", binding: model.binding(for: \.carbohydrateText, default: ""))
                     .accessibilityIdentifier("reviewCarbohydrates")
-                labeledField("Absorption duration (minutes)", binding: model.binding(for: \.absorptionMinutesText, default: ""))
+                labeledField("Absorption", unit: "min", binding: model.binding(for: \.absorptionMinutesText, default: ""))
                     .accessibilityIdentifier("reviewAbsorption")
                 TextField("Meal notes", text: model.binding(for: \.mealNotes, default: ""))
                 if estimate.confidence == .low {
@@ -175,17 +189,19 @@ public struct FoodRecognitionView: View {
                         .font(.footnote).foregroundColor(.secondary)
                 }
             }
+            .listRowInsets(reviewRowInsets)
             Section("Estimated ranges") {
                 Text("Carbohydrates: \(quantity(estimate.carbohydrateGrams, unit: "g"))")
                 Text("Absorption duration: \(quantity(estimate.absorptionMinutes, unit: "min"))")
             }
+            .listRowInsets(reviewRowInsets)
             if let photo = model.photo { Section("Meal photo") {
                 Image(uiImage: photo).resizable().scaledToFit().frame(maxHeight: 180)
                     .accessibilityLabel("Current meal photograph")
-            } }
+            }.listRowInsets(reviewRowInsets) }
             Section(model.mode == .demo ? "Example foods and portions" : "Foods and estimated portions") {
                 ForEach(Array(estimate.foods.enumerated()), id: \.offset) { _, food in
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(food.name).font(.headline)
                         Text(food.portionDescription)
                         Text("Portion: \(quantity(food.portionGrams, unit: "g"))")
@@ -196,6 +212,7 @@ public struct FoodRecognitionView: View {
                     }
                 }
             }
+            .listRowInsets(reviewRowInsets)
             Section("Explanation") {
                 if model.mode == .openAI {
                     Text("Nutrition is inferred from the photo, not checked against a nutrition database. Total carbohydrate includes fiber; check ingredients, portions and nutrition labels.")
@@ -207,18 +224,44 @@ public struct FoodRecognitionView: View {
                 ForEach(estimate.assumptions, id: \.self) { Text($0).font(.footnote) }
                 Text(estimate.provenance).font(.caption).foregroundColor(.secondary)
             }
+            .listRowInsets(reviewRowInsets)
             Section("Review details") {
                 Text("Enter 0–250 g and 30–480 minutes. These are prototype bounds, not recommended treatment values.")
                     .font(.footnote).foregroundColor(.secondary)
                 Button("Discard photo and review", role: .destructive) { discard() }
             }
+            .listRowInsets(reviewRowInsets)
+        }
+        .listStyle(.insetGrouped)
+        .environment(\.defaultMinListRowHeight, 44)
+        .environment(\.defaultMinListHeaderHeight, 16)
+    }
+
+    @ViewBuilder
+    private func labeledField(_ label: String, unit: String, binding: Binding<String>) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(label).font(.caption).foregroundColor(.secondary)
+                numericField(label, unit: unit, binding: binding)
+            }
+        } else {
+            HStack(spacing: 12) {
+                Text(label)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                numericField(label, unit: unit, binding: binding)
+                    .frame(width: 110)
+            }
         }
     }
 
-    private func labeledField(_ label: String, binding: Binding<String>) -> some View {
-        VStack(alignment: .leading) {
-            Text(label).font(.caption).foregroundColor(.secondary)
-            TextField(label, text: binding).keyboardType(.decimalPad)
+    private func numericField(_ label: String, unit: String, binding: Binding<String>) -> some View {
+        HStack(spacing: 4) {
+            TextField(label, text: binding)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .accessibilityLabel("\(label), \(unit)")
+            Text(unit).foregroundColor(.secondary).accessibilityHidden(true)
         }
     }
 
