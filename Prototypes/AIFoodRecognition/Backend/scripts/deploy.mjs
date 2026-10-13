@@ -36,8 +36,13 @@ try {
   if (!result.success || typeof subdomain !== "string" || !/^[a-z0-9-]+$/.test(subdomain)) throw new Error();
   const address = `https://loop-plus-meal-review.${subdomain}.workers.dev`;
   const health = await fetch(`${address}/health`, { signal: AbortSignal.timeout(10000), redirect: "error" });
-  if (!health.ok || (await health.json()).status !== "ready") throw new Error();
+  const healthBody = await health.json();
+  const limits = healthBody.photoLimits;
+  if (!health.ok || healthBody.status !== "ready"
+      || !Number.isSafeInteger(limits?.perDay) || limits.perDay < 1
+      || !Number.isSafeInteger(limits?.perMinute) || limits.perMinute < 1) throw new Error();
   process.stdout.write(`Backend configuration verified: ${address}\n`);
+  process.stdout.write(`Verified photo limits: ${limits.perDay} per UTC day, ${limits.perMinute} per minute\n`);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-    `### Loop+ backend published\n\nServer address: **${address}**\n\nUse your separate tester access code in Loop+ 0.2.0. No OpenAI request was made by this health check; provider credentials and photo analysis still require a consented device trial.\n`);
+    `### Loop+ backend published\n\nServer address: **${address}**\n\nPhoto limits verified: **${limits.perDay} per UTC day and ${limits.perMinute} per minute**. Personal builds connect automatically. No OpenAI request was made by this health check; analysis starts after a camera capture.\n`);
 } catch { stop("Publication commands completed, but the public health check was not verified. Check the Worker URL/status in Cloudflare before connecting the app."); }

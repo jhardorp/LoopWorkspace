@@ -9,10 +9,14 @@ const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(va
   status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...extra },
 });
 const failure = (error, status) => json({ error }, status);
-const dayLimit = (env) => {
-  const value = Number(env.DAILY_PHOTO_LIMIT ?? 10);
-  if (!Number.isInteger(value) || value < 1 || value > 20) throw new Error("Invalid daily quota");
-  return value;
+const photoLimits = (env) => {
+  const perDay = Number(env.DAILY_PHOTO_LIMIT ?? 1000);
+  const perMinute = Number(env.MINUTE_PHOTO_LIMIT ?? 60);
+  if (!Number.isInteger(perDay) || perDay < 1 || perDay > 100000
+      || !Number.isInteger(perMinute) || perMinute < 1 || perMinute > 1000) {
+    throw new Error("Invalid photo quota");
+  }
+  return { perDay, perMinute };
 };
 function configured(env) {
   return typeof env.OPENAI_API_KEY === "string" && env.OPENAI_API_KEY.startsWith("sk-")
@@ -57,12 +61,11 @@ export function makeHandler({ providerFetch = fetch, now = () => Math.floor(Date
       const ready = configured(env);
       if (request.method === "GET" && url.pathname === "/health") {
         if (!ready) return json({ schemaVersion: 1, status: "setupRequired" }, 503);
-        dayLimit(env);
-        return json({ schemaVersion: 1, status: "ready" });
+        return json({ schemaVersion: 1, status: "ready", photoLimits: photoLimits(env) });
       }
       if (request.method !== "POST" || !["/v1/session", "/v1/estimate"].includes(url.pathname)) return failure("notFound", 404);
       if (!ready) return failure("serviceNotConfigured", 503);
-      dayLimit(env);
+      photoLimits(env);
       if (url.pathname === "/v1/session") {
         const denied = await consume(env, "session", await loginIdentity(request, env.TESTER_ACCESS_CODE));
         if (denied) return denied;
@@ -139,7 +142,8 @@ export class PrototypeQuota {
         if (!state || state.day !== day) state = { day, photos: 0, minute, photoMinute: 0, loginMinute: 0, identities: {} };
         if (state.minute !== minute) Object.assign(state, { minute, photoMinute: 0, loginMinute: 0, identities: {} });
         if (body.kind === "estimate") {
-          if (state.photos >= dayLimit(this.env) || state.photoMinute >= 3) return false;
+          const limits = photoLimits(this.env);
+          if (state.photos >= limits.perDay || state.photoMinute >= limits.perMinute) return false;
           state.photos++; state.photoMinute++;
         } else {
           const count = state.identities[body.identity] ?? 0;

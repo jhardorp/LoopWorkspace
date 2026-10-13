@@ -221,7 +221,7 @@ final class PrototypeViewModel: ObservableObject {
         case .invalidPhoto: return "The photo could not be prepared. Try taking another meal photo."
         case .invalidResponse: return "The response failed validation and was discarded."
         case .authenticationRequired: return "The login was not accepted. Retry the connection; if the tester password was changed or revoked, enter the current password once."
-        case .rateLimited: return "The request limit was reached. Wait before trying another photo; no fallback estimate was used."
+        case .rateLimited: return "Photo analysis reached a request limit. Try again later."
         case .serviceUnavailable: return "The AI service is unavailable or still needs server setup. No estimate was produced."
         case .invalidConfiguration: return "Enter your tester password once (32 or more characters). The service address is prefilled; your OpenAI API key belongs on the server."
         case .uploadConsentRequired: return "Photograph a meal to start analysis."

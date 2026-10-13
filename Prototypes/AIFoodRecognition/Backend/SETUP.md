@@ -64,7 +64,7 @@ The first consented photo verifies live provider access. Tests use simulated rep
 
 ## Cost, limits and privacy
 
-- **10 photos per UTC day** by default, shared across sessions, and **3 per minute**. Persistent SQLite counters serialize concurrent requests. `DAILY_PHOTO_LIMIT` can be lowered; values over 20 fail closed.
+- **1,000 photos per UTC day** by default, shared across sessions, and **60 per minute**. Persistent SQLite counters serialize concurrent requests. `DAILY_PHOTO_LIMIT` and `MINUTE_PHOTO_LIMIT` are configurable; accepted ranges are 1–100,000 per day and 1–1,000 per minute. The health endpoint reports the effective limits. Raising them applies to existing counters without waiting for a day/minute reset.
 - One provider request per accepted image, no automatic retry. JPEGs are capped at 1 MiB, replies at 256 KiB and output at 4,000 tokens. Charges follow [OpenAI API pricing](https://openai.com/api/pricing/) for the image-capable `gpt-4.1-2025-04-14` snapshot. Billing is based on tokens, not a fixed picture fee.
 - Accepted images consume quota even if the provider fails, times out, refuses or returns invalid JSON; some may still be billed. Cancellation cannot retract a received photo or guarantee a refund.
 - Workers Free and **SQLite** Durable Objects have free-tier limits; this configuration never upgrades the account automatically. If limits are reached the app reports failure. Counters store time windows/counts and salted login-IP digests, never photos, estimates, raw IPs or meal history.

@@ -354,7 +354,7 @@ public struct FoodRecognitionView: View {
             } else if case .failed(.authenticationRequired) = model.state, model.hasSavedLogin || model.hasPreconfiguredLogin {
                 Button("Retry connection") { model.resume() }.disabled(model.connecting)
             }
-            Text("OpenAI requests consume API credits. The prototype backend allows up to 10 photos per day and 3 per minute. Failed provider requests also count; there are no automatic retries.")
+            Text("OpenAI requests consume API credits. The prototype backend allows up to 1,000 photos per UTC day and 60 per minute. Failed provider requests also count; there are no automatic retries.")
                 .font(.footnote).foregroundColor(.secondary)
             Text("Captured meal photos are analyzed automatically by OpenAI.")
                 .font(.footnote).foregroundColor(.secondary)

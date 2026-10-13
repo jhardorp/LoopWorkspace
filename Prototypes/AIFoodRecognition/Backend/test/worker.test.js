@@ -56,7 +56,7 @@ test("health indicates setup required until secrets and persistent quota are con
   const { env } = environment();
   const response = await run(new Request(`${origin}/health`), env);
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { schemaVersion: 1, status: "ready" });
+  assert.deepEqual(await response.json(), { schemaVersion: 1, status: "ready", photoLimits: { perDay: 10, perMinute: 60 } });
 });
 
 test("login issues a 30 minute, origin-bound token without returning the access code or provider key", async () => {
@@ -198,9 +198,11 @@ test("global daily quota persists and caps calls across concurrent requests and 
 
 test("rate limits survive new minute windows; daily counters reset only on a new UTC day", async () => {
   let time = seconds;
-  const { quota } = environment(2, () => time);
+  const { env, quota } = environment(2, () => time);
+  env.MINUTE_PHOTO_LIMIT = "1";
   const request = () => new Request("https://quota/consume", { method: "POST", body: JSON.stringify({ kind: "estimate", identity: "" }) });
   assert.equal((await quota.fetch(request())).status, 200);
+  assert.equal((await quota.fetch(request())).status, 429);
   time += 60;
   assert.equal((await quota.fetch(request())).status, 200);
   time += 60;
@@ -220,9 +222,44 @@ test("login brute-force attempts are limited without storing raw client IPs", as
 });
 
 test("out-of-range quota configuration fails closed", async () => {
-  const { env } = environment(21);
-  const response = await handler(() => assert.fail("No model call"))(await photoRequest(), env);
-  assert.equal(response.status, 503);
+  for (const [setting, value] of [
+    ["DAILY_PHOTO_LIMIT", "100001"], ["DAILY_PHOTO_LIMIT", "0"], ["DAILY_PHOTO_LIMIT", "1.5"],
+    ["MINUTE_PHOTO_LIMIT", "1001"], ["MINUTE_PHOTO_LIMIT", "0"], ["MINUTE_PHOTO_LIMIT", "not-a-number"],
+  ]) {
+    const { env } = environment();
+    env[setting] = value;
+    const response = await handler(() => assert.fail("No model call"))(await photoRequest(), env);
+    assert.equal(response.status, 503, `${setting}=${value}`);
+  }
+});
+
+test("generous defaults allow 60 concurrent photos and report the daily budget", async () => {
+  const { env, quota, storage } = environment();
+  delete env.DAILY_PHOTO_LIMIT;
+  const health = await handler(() => assert.fail("No model call"))(new Request(`${origin}/health`), env);
+  assert.deepEqual(await health.json(), { schemaVersion: 1, status: "ready", photoLimits: { perDay: 1000, perMinute: 60 } });
+  const request = () => new Request("https://quota/consume", { method: "POST", body: JSON.stringify({ kind: "estimate", identity: "" }) });
+  const responses = await Promise.all(Array.from({ length: 65 }, () => quota.fetch(request())));
+  assert.equal(responses.filter(response => response.status === 200).length, 60);
+  assert.equal(responses.filter(response => response.status === 429).length, 5);
+  assert.equal((await storage.get("counters")).photos, 60);
+});
+
+test("raising limits immediately admits a photo after the old budgets were exhausted", async () => {
+  const { env, storage } = environment(1000);
+  env.MINUTE_PHOTO_LIMIT = "60";
+  await storage.put("counters", {
+    day: Math.floor(seconds / 86400), photos: 10, minute: Math.floor(seconds / 60),
+    photoMinute: 3, loginMinute: 0, identities: {},
+  });
+  const recreated = new PrototypeQuota({ storage }, env, () => seconds);
+  const response = await recreated.fetch(new Request("https://quota/consume", {
+    method: "POST", body: JSON.stringify({ kind: "estimate", identity: "" }),
+  }));
+  assert.equal(response.status, 200);
+  const counters = await storage.get("counters");
+  assert.equal(counters.photos, 11);
+  assert.equal(counters.photoMinute, 4);
 });
 
 test("validated model output and provenance do not accept model-supplied extra fields", () => {
