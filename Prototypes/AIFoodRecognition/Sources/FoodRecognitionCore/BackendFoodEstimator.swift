@@ -75,6 +75,28 @@ public struct FoodBackendClient: Sendable {
     }
 
     public func estimate(photo: MealPhoto, session: BackendSession) async throws -> EstimationOutcome {
+        try validateInput(photo: photo, session: session)
+        var request = makeRequest(path: "v1/estimate")
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = photo.data
+        return try decodeEstimate(await send(request))
+    }
+
+    public func refine(photo: MealPhoto, context: MealRefinement, session: BackendSession) async throws -> EstimationOutcome {
+        try validateInput(photo: photo, session: session)
+        let validated = try MealRefinement(previousEstimate: context.previousEstimate,
+                                           comments: context.comments, question: context.question)
+        guard validated.previousEstimate.confidence == .low else { throw EstimationError.invalidResponse }
+        var request = makeRequest(path: "v1/refine")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(RefinementRequest(imageBase64: photo.data.base64EncodedString(), refinement: validated))
+        guard let body = request.httpBody, body.count <= 1_700_000 else { throw EstimationError.invalidComment }
+        return try decodeEstimate(await send(request))
+    }
+
+    private func validateInput(photo: MealPhoto, session: BackendSession) throws {
         guard photo.kind == .jpeg, photo.data.count <= Self.maximumPhotoBytes,
               photo.data.starts(with: [0xff, 0xd8]), photo.data.suffix(2) == Data([0xff, 0xd9]) else {
             throw EstimationError.invalidPhoto
@@ -83,11 +105,9 @@ public struct FoodBackendClient: Sendable {
               session.token.utf8.count <= 2048, !session.token.contains(where: { $0.isWhitespace }) else {
             throw EstimationError.authenticationRequired
         }
-        var request = makeRequest(path: "v1/estimate")
-        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
-        request.httpBody = photo.data
-        let response = try await send(request)
+    }
+
+    private func decodeEstimate(_ response: BackendHTTPResponse) throws -> EstimationOutcome {
         guard let envelope = try? JSONDecoder().decode(EstimateEnvelope.self, from: response.data),
               envelope.schemaVersion == 1 else { throw EstimationError.invalidResponse }
         switch envelope.status {
@@ -121,6 +141,7 @@ public struct FoodBackendClient: Sendable {
             case 429: throw EstimationError.rateLimited
             case 408, 504: throw EstimationError.timedOut
             case 413, 415: throw EstimationError.invalidPhoto
+            case 422: throw EstimationError.invalidComment
             case 500...599: throw EstimationError.serviceUnavailable
             default: throw EstimationError.invalidResponse
             }
@@ -141,6 +162,10 @@ public struct FoodBackendClient: Sendable {
     }
 
     private struct LoginRequest: Encodable { let accessCode: String }
+    private struct RefinementRequest: Encodable {
+        let imageBase64: String
+        let refinement: MealRefinement
+    }
     private struct EstimateEnvelope: Decodable {
         let schemaVersion: Int
         let status: String
@@ -160,5 +185,9 @@ public struct BackendFoodEstimator: FoodEstimating {
 
     public func estimate(photo: MealPhoto) async throws -> EstimationOutcome {
         try await client.estimate(photo: photo, session: session)
+    }
+
+    public func refine(photo: MealPhoto, context: MealRefinement) async throws -> EstimationOutcome {
+        try await client.refine(photo: photo, context: context, session: session)
     }
 }

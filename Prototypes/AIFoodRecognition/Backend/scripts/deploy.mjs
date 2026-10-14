@@ -38,7 +38,7 @@ try {
   const health = await fetch(`${address}/health`, { signal: AbortSignal.timeout(10000), redirect: "error" });
   const healthBody = await health.json();
   const limits = healthBody.photoLimits;
-  if (!health.ok || healthBody.status !== "ready"
+  if (!health.ok || healthBody.status !== "ready" || healthBody.features?.mealRefinement !== true
       || !Number.isSafeInteger(limits?.perDay) || limits.perDay < 1
       || !Number.isSafeInteger(limits?.perMinute) || limits.perMinute < 1) throw new Error();
   process.stdout.write(`Backend configuration verified: ${address}\n`);

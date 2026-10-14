@@ -30,9 +30,17 @@ public enum EstimationOutcome: Equatable, Sendable {
 public enum EstimationError: Error, Equatable, Sendable {
     case networkUnavailable, timedOut, invalidResponse, invalidPhoto
     case authenticationRequired, rateLimited, serviceUnavailable, invalidConfiguration, uploadConsentRequired
+    case invalidComment
 }
 
-/// Receives only the current photo. No historical meals, glucose, or therapy dependencies.
+/// Receives the current photo and optional corrections to its current review only.
 public protocol FoodEstimating: Sendable {
     func estimate(photo: MealPhoto) async throws -> EstimationOutcome
+    func refine(photo: MealPhoto, context: MealRefinement) async throws -> EstimationOutcome
+}
+
+public extension FoodEstimating {
+    func refine(photo: MealPhoto, context: MealRefinement) async throws -> EstimationOutcome {
+        throw EstimationError.serviceUnavailable
+    }
 }

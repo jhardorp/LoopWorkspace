@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { instructions, modelSchema, validateAssessment } from "./contract.js";
 import { issueSession, validSession, sameAccessCode, loginIdentity } from "./auth.js";
+import { MAX_REFINEMENT_BYTES, parseRefinement, refinementInstructions, refinementPrompt } from "./refinement.js";
 
 export const MAX_PHOTO_BYTES = 1024 * 1024;
 const MAX_PROVIDER_BYTES = 256 * 1024;
@@ -61,9 +62,9 @@ export function makeHandler({ providerFetch = fetch, now = () => Math.floor(Date
       const ready = configured(env);
       if (request.method === "GET" && url.pathname === "/health") {
         if (!ready) return json({ schemaVersion: 1, status: "setupRequired" }, 503);
-        return json({ schemaVersion: 1, status: "ready", photoLimits: photoLimits(env) });
+        return json({ schemaVersion: 1, status: "ready", photoLimits: photoLimits(env), features: { mealRefinement: true } });
       }
-      if (request.method !== "POST" || !["/v1/session", "/v1/estimate"].includes(url.pathname)) return failure("notFound", 404);
+      if (request.method !== "POST" || !["/v1/session", "/v1/estimate", "/v1/refine"].includes(url.pathname)) return failure("notFound", 404);
       if (!ready) return failure("serviceNotConfigured", 503);
       photoLimits(env);
       if (url.pathname === "/v1/session") {
@@ -78,16 +79,27 @@ export function makeHandler({ providerFetch = fetch, now = () => Math.floor(Date
         return json(await issueSession(env.TESTER_ACCESS_CODE, url.origin, now()));
       }
       if (!await validSession(request.headers.get("Authorization"), env.TESTER_ACCESS_CODE, url.origin, now())) return failure("authenticationRequired", 401);
-      if (request.headers.get("Content-Type") !== "image/jpeg") return failure("invalidPhoto", 415);
-      if (Number(request.headers.get("Content-Length")) > MAX_PHOTO_BYTES) return failure("invalidPhoto", 413);
-      let bytes;
-      try { bytes = await readBounded(request.body, MAX_PHOTO_BYTES); }
-      catch { return failure("invalidPhoto", 413); }
-      if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes.at(-2) !== 0xff || bytes.at(-1) !== 0xd9) return failure("invalidPhoto", 415);
-      const denied = await consume(env, "estimate");
-      if (denied) return denied;
       const model = env.OPENAI_MODEL || DEFAULT_MODEL;
       if (!/^[A-Za-z0-9._-]{1,80}$/.test(model)) return failure("serviceNotConfigured", 503);
+      let bytes;
+      let refinement;
+      if (url.pathname === "/v1/refine") {
+        if (request.headers.get("Content-Type")?.split(";")[0].trim() !== "application/json") return failure("invalidRequest", 400);
+        if (Number(request.headers.get("Content-Length")) > MAX_REFINEMENT_BYTES) return failure("invalidRequest", 413);
+        let payload;
+        try { payload = await readBounded(request.body, MAX_REFINEMENT_BYTES); }
+        catch { return failure("invalidRequest", 413); }
+        try { refinement = parseRefinement(payload, model, MAX_PHOTO_BYTES); bytes = refinement.photo; }
+        catch { return failure("invalidComment", 422); }
+      } else {
+        if (request.headers.get("Content-Type") !== "image/jpeg") return failure("invalidPhoto", 415);
+        if (Number(request.headers.get("Content-Length")) > MAX_PHOTO_BYTES) return failure("invalidPhoto", 413);
+        try { bytes = await readBounded(request.body, MAX_PHOTO_BYTES); }
+        catch { return failure("invalidPhoto", 413); }
+        if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes.at(-2) !== 0xff || bytes.at(-1) !== 0xd9) return failure("invalidPhoto", 415);
+      }
+      const denied = await consume(env, "estimate");
+      if (denied) return denied;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMilliseconds);
       let result;
@@ -99,9 +111,9 @@ export function makeHandler({ providerFetch = fetch, now = () => Math.floor(Date
           signal: controller.signal,
           body: JSON.stringify({
             model, store: false, background: false, max_output_tokens: 4000,
-            instructions,
+            instructions: refinement ? `${instructions}\n${refinementInstructions}` : instructions,
             input: [{ role: "user", content: [
-              { type: "input_text", text: "Analyze only this meal image. Return the structured estimate or a clarification request." },
+              { type: "input_text", text: refinement ? refinementPrompt(refinement) : "Analyze only this meal image. Return the structured estimate or a clarification request." },
               { type: "input_image", image_url: `data:image/jpeg;base64,${Buffer.from(bytes).toString("base64")}`, detail: "high" },
             ] }],
             text: { format: { type: "json_schema", name: "meal_review_v1", strict: true, schema: modelSchema } },

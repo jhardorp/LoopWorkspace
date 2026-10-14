@@ -10,19 +10,24 @@ public struct FoodRecognitionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let startsWithCamera: Bool
+    private let startsWithPhotoLibrary: Bool
     private let onUseMeal: (@MainActor (ReviewedMeal) -> Bool)?
     @State private var startedCamera = false
     @State private var showCamera = false
+    @State private var showPhotoLibrary = false
+    @State private var loadingLibraryPhoto = false
     @State private var cameraError: String?
     @State private var requestingCamera = false
     @State private var transferError: String?
+    @FocusState private var commentFocused: Bool
     @State private var manualCarbs = ""
     @State private var manualMinutes = "180"
     @State private var manualFood = ""
     @State private var mealTime = Date()
 
-    public init(startsWithCamera: Bool = false, onUseMeal: (@MainActor (ReviewedMeal) -> Bool)? = nil) {
+    public init(startsWithCamera: Bool = false, startsWithPhotoLibrary: Bool = false, onUseMeal: (@MainActor (ReviewedMeal) -> Bool)? = nil) {
         self.startsWithCamera = startsWithCamera
+        self.startsWithPhotoLibrary = startsWithPhotoLibrary
         self.onUseMeal = onUseMeal
     }
 
@@ -58,18 +63,40 @@ public struct FoodRecognitionView: View {
             }, onCancel: { showCamera = false })
                 .ignoresSafeArea()
         }
-        .alert("Camera unavailable", isPresented: Binding(get: { cameraError != nil }, set: {
+        .alert("Photo unavailable", isPresented: Binding(get: { cameraError != nil }, set: {
             if !$0 { cameraError = nil }
         })) {
             Button("OK", role: .cancel) { cameraError = nil }
         } message: {
             Text(cameraError ?? "")
         }
+        .sheet(isPresented: $showPhotoLibrary, onDismiss: { loadingLibraryPhoto = false }) {
+            MealPhotoLibraryView(onSelect: { image in
+                showPhotoLibrary = false
+                loadingLibraryPhoto = false
+                guard UIApplication.shared.applicationState == .active else { return }
+                model.analyze(image, consentToUpload: true)
+            }, onCancel: { showPhotoLibrary = false }, onFailure: {
+                showPhotoLibrary = false
+                cameraError = "The selected photo could not be loaded. Try another image."
+            }, onLoading: { loadingLibraryPhoto = true })
+            .overlay {
+                if loadingLibraryPhoto {
+                    VStack(spacing: 12) {
+                        ProgressView("Loading photo…")
+                        Button("Cancel", role: .cancel) { showPhotoLibrary = false }
+                    }
+                    .padding().background(.regularMaterial).cornerRadius(12)
+                }
+            }
+        }
         // UIKit hosts do not reliably supply SwiftUI's scenePhase environment.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             discard()
             model.pause()
             showCamera = false
+            showPhotoLibrary = false
+            loadingLibraryPhoto = false
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             model.resume()
@@ -104,6 +131,11 @@ public struct FoodRecognitionView: View {
                 }
                 .accessibilityIdentifier("photographMeal")
                 .disabled(model.state == .estimating || requestingCamera || (model.mode == .openAI && !model.canUseAI))
+                Button(action: openPhotoLibrary) {
+                    Label("Choose photo", systemImage: "photo.on.rectangle")
+                }
+                .accessibilityIdentifier("chooseMealPhoto")
+                .disabled(model.state == .estimating || (model.mode == .openAI && !model.canUseAI))
             }
             if model.mode == .demo { Section {
                 Picker("Demo result", selection: $model.scenario) {
@@ -160,7 +192,7 @@ public struct FoodRecognitionView: View {
     private func reviewList(_ estimate: MealEstimate) -> some View {
         List {
             Section(model.mode == .demo ? "Demo result" : "Meal result") {
-                Text("Photo estimate: \(estimate.carbohydrateGrams.value, specifier: "%.1f") g · \(estimate.absorptionMinutes.value, specifier: "%.0f") min")
+                Text("\(model.estimateLabel): \(estimate.carbohydrateGrams.value, specifier: "%.1f") g · \(estimate.absorptionMinutes.value, specifier: "%.0f") min")
                     .font(.headline)
                     .accessibilityIdentifier("mealEstimateSummary")
                 labeledField("Carbohydrates", unit: "g", binding: model.binding(for: \.carbohydrateText, default: ""))
@@ -177,8 +209,12 @@ public struct FoodRecognitionView: View {
                         transferError = "Loop could not accept these values. Your result is still here; review the amounts and try again."
                     }
                 }
-                .disabled(!(model.draft?.canFinish(estimate: estimate) ?? false) || model.reviewedMeal == nil || model.reviewFinished)
+                .disabled(!(model.draft?.canFinish(estimate: estimate) ?? false) || model.reviewedMeal == nil || model.reviewFinished || model.refining || model.hasPendingComment || model.refinementQuestion != nil)
                 .accessibilityIdentifier("finishReview")
+                if model.hasPendingComment, !model.refining {
+                    Text("Refine the comment below, or clear it to keep the current estimate.")
+                        .font(.footnote).foregroundColor(.secondary)
+                }
                 if model.reviewFinished, onUseMeal == nil {
                     Text("Review complete. These values remain here for you to enter in Loop.").foregroundColor(.green)
                 }
@@ -189,7 +225,11 @@ public struct FoodRecognitionView: View {
                         .font(.footnote).foregroundColor(.secondary)
                 }
             }
+            .disabled(model.refining)
             .listRowInsets(reviewRowInsets)
+            if model.mode == .openAI, !model.reviewFinished {
+                refinementSection.listRowInsets(reviewRowInsets)
+            }
             Section("Estimated ranges") {
                 Text("Carbohydrates: \(quantity(estimate.carbohydrateGrams, unit: "g"))")
                 Text("Absorption duration: \(quantity(estimate.absorptionMinutes, unit: "min"))")
@@ -235,6 +275,65 @@ public struct FoodRecognitionView: View {
         .listStyle(.insetGrouped)
         .environment(\.defaultMinListRowHeight, 44)
         .environment(\.defaultMinListHeaderHeight, 16)
+    }
+
+    private var refinementSection: some View {
+        Section("Improve estimate") {
+            TextEditor(text: $model.refinementComment)
+                .frame(height: 70)
+                .focused($commentFocused)
+                .accessibilityLabel("Comment to improve the meal estimate")
+                .accessibilityIdentifier("mealRefinementComment")
+                .overlay(alignment: .topLeading) {
+                    if model.refinementComment.isEmpty {
+                        Text("Larger slice, two portions, brand or ripeness…")
+                            .foregroundColor(.secondary)
+                            .padding(.top, 8).padding(.leading, 4)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .disabled(model.refining)
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        if commentFocused {
+                            Spacer()
+                            Button("Done") { commentFocused = false }
+                        }
+                    }
+                }
+            if model.refining {
+                ProgressView("Updating estimate…")
+                Button("Cancel update", role: .cancel) { model.cancelRefinement() }
+            } else {
+                Button("Refine estimate") {
+                    commentFocused = false
+                    transferError = nil
+                    model.refine()
+                }
+                .disabled(!model.canRefine)
+                .accessibilityIdentifier("refineMealEstimate")
+            }
+            if let question = model.refinementQuestion {
+                Text(question).foregroundColor(.orange)
+                Text("Answer in the comment field to update the previous estimate.")
+                    .font(.footnote).foregroundColor(.secondary)
+            }
+            if let error = model.refinementError {
+                Text("The update did not complete. Your previous estimate and edits are unchanged.")
+                    .foregroundColor(.orange)
+                Text(model.errorMessage(error)).font(.footnote)
+            }
+            if !model.refinementComments.isEmpty {
+                DisclosureGroup("Comments for this meal") {
+                    ForEach(Array(model.refinementComments.enumerated()), id: \.offset) { _, comment in
+                        Text(comment).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            Text("AI uses this photo and your comments to revise the result. Each update uses one AI request.")
+                .font(.footnote).foregroundColor(.secondary)
+        }
     }
 
     @ViewBuilder
@@ -284,7 +383,7 @@ public struct FoodRecognitionView: View {
             return
         }
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-            cameraError = "This device has no available camera. Use the demo meal button in the simulator."
+            cameraError = "This device has no available camera. Choose a photo from your gallery instead."
             return
         }
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -317,9 +416,19 @@ public struct FoodRecognitionView: View {
     }
 
     private func startCameraIfRequested() {
-        guard startsWithCamera, !startedCamera, model.canUseAI else { return }
+        guard startsWithCamera || startsWithPhotoLibrary, !startedCamera, model.canUseAI else { return }
         startedCamera = true
-        openCamera()
+        if startsWithPhotoLibrary { openPhotoLibrary() }
+        else { openCamera() }
+    }
+
+    private func openPhotoLibrary() {
+        guard model.mode == .demo || model.canUseAI else {
+            cameraError = "Connect to the AI service before choosing a meal photo."
+            return
+        }
+        loadingLibraryPhoto = false
+        showPhotoLibrary = true
     }
 
     private var connection: some View {

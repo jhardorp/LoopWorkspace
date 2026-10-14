@@ -14,6 +14,11 @@ final class PrototypeViewModel: ObservableObject {
     @Published private(set) var draft: ReviewDraft?
     @Published private(set) var reviewFinished = false
     @Published private(set) var photo: UIImage?
+    @Published var refinementComment = ""
+    @Published private(set) var refining = false
+    @Published private(set) var refinementComments: [String] = []
+    @Published private(set) var refinementError: EstimationError?
+    @Published private(set) var refinementQuestion: String?
     @Published var scenario: MockScenario = .balancedMeal
     @Published var mode: RecognitionMode = .openAI {
         didSet { if oldValue != mode { clear() } }
@@ -31,6 +36,7 @@ final class PrototypeViewModel: ObservableObject {
     private var task: Task<Void, Never>?
     private var connectionTask: Task<Void, Never>?
     private var connectionID = UUID()
+    private var currentPhoto: MealPhoto?
     private let connection: RememberedBackendConnection
 
     init() {
@@ -54,6 +60,21 @@ final class PrototypeViewModel: ObservableObject {
         draft.flatMap { ReviewedMeal(draft: $0) }
     }
 
+    var hasPendingComment: Bool {
+        !refinementComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var canRefine: Bool {
+        guard mode == .openAI, canUseAI, !refining, !reviewFinished,
+              currentPhoto != nil, case .reviewing = state else { return false }
+        return hasPendingComment
+    }
+
+    var estimateLabel: String {
+        if refinementQuestion != nil { return "Previous estimate" }
+        return refinementComments.isEmpty ? "Photo estimate" : "Refined estimate"
+    }
+
     func connect() {
         clear()
         let address = serverAddress, code = testerCode
@@ -65,7 +86,7 @@ final class PrototypeViewModel: ObservableObject {
 
     func resume() {
         syncConnection()
-        guard !connecting, state != .estimating else { return }
+        guard !connecting, state != .estimating, !refining else { return }
         if !hasSavedLogin, let code = preconfiguredTesterCode {
             runConnection { [connection] in
                 try await connection.connect(serverAddress: Self.defaultServerAddress, testerCode: code)
@@ -154,6 +175,7 @@ final class PrototypeViewModel: ObservableObject {
             input = .demo
         }
         state = .estimating
+        currentPhoto = input
         task = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
             do {
@@ -187,8 +209,48 @@ final class PrototypeViewModel: ObservableObject {
         })
     }
 
+    func refine() {
+        guard canRefine, let input = currentPhoto else { return }
+        let comment = refinementComment
+        let oldCount = session.refinementComments.count
+        refining = true
+        refinementError = nil
+        task = Task { [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            do {
+                let provider = try await connection.estimator()
+                try Task.checkCancellation()
+                syncConnection()
+                await session.refine(photo: input, comment: comment, using: provider)
+                guard !Task.isCancelled else { return }
+                if session.refinementComments.count > oldCount { refinementComment = "" }
+                sync()
+                if refinementError == .authenticationRequired {
+                    try? connection.invalidateSession()
+                    syncConnection()
+                }
+            } catch {
+                guard !Task.isCancelled, !(error is CancellationError) else { return }
+                syncConnection()
+                refinementError = error as? EstimationError ?? .serviceUnavailable
+            }
+            refining = false
+            task = nil
+        }
+    }
+
+    func cancelRefinement() {
+        task?.cancel()
+        task = nil
+        session.cancelRefinement()
+        connection.cancelPendingAuthorization()
+        refining = false
+        sync()
+    }
+
     @discardableResult
     func finishReview(using accept: (@MainActor (ReviewedMeal) -> Bool)? = nil) -> Bool {
+        guard !refining, !hasPendingComment else { return false }
         let accepted = session.finishReview(accept: accept)
         sync()
         return accepted
@@ -199,6 +261,9 @@ final class PrototypeViewModel: ObservableObject {
         task = nil
         session.reset()
         photo = nil
+        currentPhoto = nil
+        refining = false
+        refinementComment = ""
         sync()
     }
 
@@ -206,6 +271,9 @@ final class PrototypeViewModel: ObservableObject {
         // Publish the display state only after its editable values are ready.
         draft = session.draft
         reviewFinished = session.reviewFinished
+        refinementComments = session.refinementComments
+        refinementError = session.refinementError
+        refinementQuestion = session.refinementQuestion
         state = session.state
     }
 
@@ -225,6 +293,7 @@ final class PrototypeViewModel: ObservableObject {
         case .serviceUnavailable: return "The AI service is unavailable or still needs server setup. No estimate was produced."
         case .invalidConfiguration: return "Enter your tester password once (32 or more characters). The service address is prefilled; your OpenAI API key belongs on the server."
         case .uploadConsentRequired: return "Photograph a meal to start analysis."
+        case .invalidComment: return "Add a short food or portion comment. Shorten long comments, or choose a new meal photo to start over."
         }
     }
 }

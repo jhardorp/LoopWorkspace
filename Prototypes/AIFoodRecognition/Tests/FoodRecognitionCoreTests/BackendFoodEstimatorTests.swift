@@ -78,6 +78,43 @@ final class BackendFoodEstimatorTests: XCTestCase {
         XCTAssertTrue(requests.isEmpty)
     }
 
+    func testRefinementSendsCurrentPhotoPriorEstimateAndOrderedComments() async throws {
+        let data = try await estimateBody()
+        let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let original = try JSONDecoder().decode(MealEstimate.self, from: JSONSerialization.data(withJSONObject: XCTUnwrap(envelope["estimate"])))
+        let context = try MealRefinement(previousEstimate: original, comments: ["Bigger slice", "Two of those"], question: "Which item?")
+        let transport = RecordingTransport(.success(BackendHTTPResponse(data: data, statusCode: 200)))
+        let client = try FoodBackendClient(serverAddress: address, transport: transport)
+        let outcome = try await client.refine(photo: MealPhoto(jpegData: jpeg), context: context, session: session)
+        XCTAssertEqual(outcome, .estimate(original))
+        let requests = await transport.requests
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(requests[0].url?.path, "/v1/refine")
+        XCTAssertEqual(requests[0].value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(requests[0].httpBody)) as? [String: Any])
+        XCTAssertEqual(Set(body.keys), ["imageBase64", "refinement"])
+        XCTAssertEqual(body["imageBase64"] as? String, jpeg.base64EncodedString())
+        let sent = try JSONDecoder().decode(MealRefinement.self, from: JSONSerialization.data(withJSONObject: XCTUnwrap(body["refinement"])))
+        XCTAssertEqual(sent, context)
+    }
+
+    func testRefinementTransportFailureDoesNotRetry() async throws {
+        let data = try await estimateBody()
+        let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let original = try JSONDecoder().decode(MealEstimate.self, from: JSONSerialization.data(withJSONObject: XCTUnwrap(envelope["estimate"])))
+        let context = try MealRefinement(previousEstimate: original, comments: ["Banana is not ripe"])
+        for (status, expected) in [(429, EstimationError.rateLimited), (503, .serviceUnavailable), (422, .invalidComment)] {
+            let transport = RecordingTransport(.success(BackendHTTPResponse(data: Data(), statusCode: status)))
+            let client = try FoodBackendClient(serverAddress: address, transport: transport)
+            do {
+                _ = try await client.refine(photo: MealPhoto(jpegData: jpeg), context: context, session: session)
+                XCTFail("Expected failure")
+            } catch { XCTAssertEqual(error as? EstimationError, expected) }
+            let requests = await transport.requests
+            XCTAssertEqual(requests.count, 1)
+        }
+    }
+
     func testExpiredSessionRequiresReconnectWithoutSendingPhoto() async throws {
         let transport = RecordingTransport(.failure(EstimationError.serviceUnavailable))
         let client = try FoodBackendClient(serverAddress: address, transport: transport)

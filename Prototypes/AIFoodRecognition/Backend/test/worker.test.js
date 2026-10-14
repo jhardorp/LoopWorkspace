@@ -56,7 +56,7 @@ test("health indicates setup required until secrets and persistent quota are con
   const { env } = environment();
   const response = await run(new Request(`${origin}/health`), env);
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { schemaVersion: 1, status: "ready", photoLimits: { perDay: 10, perMinute: 60 } });
+  assert.deepEqual(await response.json(), { schemaVersion: 1, status: "ready", photoLimits: { perDay: 10, perMinute: 60 }, features: { mealRefinement: true } });
 });
 
 test("login issues a 30 minute, origin-bound token without returning the access code or provider key", async () => {
@@ -237,7 +237,7 @@ test("generous defaults allow 60 concurrent photos and report the daily budget",
   const { env, quota, storage } = environment();
   delete env.DAILY_PHOTO_LIMIT;
   const health = await handler(() => assert.fail("No model call"))(new Request(`${origin}/health`), env);
-  assert.deepEqual(await health.json(), { schemaVersion: 1, status: "ready", photoLimits: { perDay: 1000, perMinute: 60 } });
+  assert.deepEqual(await health.json(), { schemaVersion: 1, status: "ready", photoLimits: { perDay: 1000, perMinute: 60 }, features: { mealRefinement: true } });
   const request = () => new Request("https://quota/consume", { method: "POST", body: JSON.stringify({ kind: "estimate", identity: "" }) });
   const responses = await Promise.all(Array.from({ length: 65 }, () => quota.fetch(request())));
   assert.equal(responses.filter(response => response.status === 200).length, 60);
