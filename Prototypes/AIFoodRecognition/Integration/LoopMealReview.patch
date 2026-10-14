@@ -104,8 +104,8 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
 +            }
 +        }
 +        .toolbar {
-+            if foodDescriptionFocused {
-+                ToolbarItemGroup(placement: .keyboard) {
++            ToolbarItemGroup(placement: .keyboard) {
++                if foodDescriptionFocused {
 +                    Spacer()
 +                    Button("Done", action: clearExpandedRow)
 +                }
