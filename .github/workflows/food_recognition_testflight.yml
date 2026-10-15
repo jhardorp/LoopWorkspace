@@ -1,0 +1,135 @@
+name: Separate food prototype TestFlight
+run-name: Separate food prototype request (${{ github.ref_name }})
+
+on:
+  push:
+    branches: ['feature/ai-food-recognition']
+    paths: ['Prototypes/AIFoodRecognition/Distribution/request.json']
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Operation for the separate prototype only
+        type: choice
+        options: [check_configuration, prepare_signed_build, upload_testflight]
+        default: check_configuration
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: separate-food-prototype-distribution
+  cancel-in-progress: false
+
+jobs:
+  prototype:
+    if: github.ref == 'refs/heads/feature/ai-food-recognition'
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Read explicit prototype operation
+        id: request
+        env:
+          DISPATCH_OPERATION: ${{ inputs.operation }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          request = json.loads(Path('Prototypes/AIFoodRecognition/Distribution/request.json').read_text())
+          operation = os.environ.get('DISPATCH_OPERATION') or request.get('operation')
+          allowed = {'check_configuration', 'prepare_signed_build', 'upload_testflight'}
+          if operation not in allowed or type(request.get('revision')) is not int or request['revision'] < 1:
+              raise SystemExit('Invalid explicit prototype distribution request')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'operation={operation}\n')
+          print(f'Operation: {operation}; bundle: com.jhardorp.foodrecognitionprototype')
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Prototypes/AIFoodRecognition/Backend/package-lock.json
+      - name: Verify backend contract before building the app
+        working-directory: Prototypes/AIFoodRecognition/Backend
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          npm ci
+          npm run check
+          npm test
+          npx --no-install wrangler deploy --dry-run --outdir "$RUNNER_TEMP/LoopPlusWorkerDryRun"
+      - name: Check signing secret presence without showing values
+        env:
+          TEAMID: ${{ secrets.TEAMID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+        run: ruby -r ./Prototypes/AIFoodRecognition/Distribution/settings.rb -e 'PrototypeDistribution.validate_environment(ENV)'
+      - name: Select installed Xcode 26 or newer for Apple uploads
+        run: |
+          python3 - <<'PY'
+          import re, subprocess
+          from pathlib import Path
+          candidates = []
+          for app in Path('/Applications').glob('Xcode_*.app'):
+              match = re.fullmatch(r'Xcode_(\d+)(?:\.(\d+))?(?:\.(\d+))?\.app', app.name)
+              if match:
+                  version = tuple(int(part or 0) for part in match.groups())
+                  if version[0] >= 26:
+                      candidates.append((version, app))
+          if not candidates:
+              raise SystemExit('This runner needs Xcode 26 or newer for current TestFlight uploads. No signing/upload performed.')
+          _, app = max(candidates)
+          subprocess.run(['sudo', 'xcode-select', '--switch', str(app / 'Contents/Developer')], check=True)
+          subprocess.run(['xcodebuild', '-version'], check=True)
+          PY
+      - name: Verify prototype before signing
+        run: |
+          swift test --package-path Prototypes/AIFoodRecognition
+          ruby Prototypes/AIFoodRecognition/Distribution/settings_test.rb
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review_test.py
+          ruby -c Prototypes/AIFoodRecognition/Distribution/fastlane/Fastfile
+          xcodebuild \
+            -project Prototypes/AIFoodRecognition/PrototypeApp/FoodRecognitionPrototype.xcodeproj \
+            -scheme FoodRecognitionPrototype \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/FoodRecognitionPrototypeUnsigned" \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Install existing pinned fastlane dependency
+        run: bundle install
+      - name: Preconfigure meal review login for the personal signed build
+        if: steps.request.outputs.operation != 'check_configuration'
+        env:
+          FOOD_TESTER_ACCESS_CODE: ${{ secrets.FOOD_TESTER_ACCESS_CODE }}
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review.py
+          --plist Prototypes/AIFoodRecognition/PrototypeApp/Info.plist
+      - name: Run only the separate prototype lane
+        working-directory: Prototypes/AIFoodRecognition/Distribution
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          TEAMID: ${{ secrets.TEAMID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          PROTOTYPE_OPERATION: ${{ steps.request.outputs.operation }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios "$PROTOTYPE_OPERATION"
+      - name: Retain only the signed prototype IPA
+        if: success() && steps.request.outputs.operation != 'check_configuration'
+        uses: actions/upload-artifact@v4
+        with:
+          name: FoodRecognitionPrototype-${{ github.run_number }}
+          path: ${{ runner.temp }}/FoodRecognitionPrototypeArtifacts/FoodRecognitionPrototype.ipa
+          if-no-files-found: error
+          retention-days: 7

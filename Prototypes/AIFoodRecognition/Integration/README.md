@@ -1,0 +1,35 @@
+# Meal photo review inside Loop
+
+**Uploaded: Loop 3.14.9 (24).** Apple accepted the personal build in [run 38497005480](https://github.com/jhardorp/LoopWorkspace/actions/runs/38497005480). All 46 Swift tests, configuration and build-order checks, full simulator compilation, device/Watch archive, signed export and internal TestFlight upload passed. Accepting the camera capture starts analysis automatically, without the separate **Photo upload** confirmation screen. The estimate appears above the editable values. Apple processing and the phone update are separate from upload.
+
+**Live photo limits:** 1,000 photos per UTC day and 60 per minute, shared across sessions. [Deployment 38386942620](https://github.com/jhardorp/LoopWorkspace/actions/runs/38386942620) passed all 20 backend tests, bundle checks, publication and public health verification. The higher server limits apply to existing app connections immediately; older builds may still display the previous limits.
+
+This feature branch adds **Photograph meal** to Loop's new carbohydrate-entry screen. The shared review screen shows editable carbohydrates, absorption minutes and meal notes at the top, followed by the estimated ranges, image, ingredients and explanations. **Use in Loop** copies only the reviewed input into the existing entry fields. The entry's time is preserved. Loop's existing Continue action, quantity validation, warnings, carb storage and bolus flow remain responsible for subsequent actions.
+
+The result screen starts at the top and displays the photo estimate directly above its editable fields. Carbohydrate grams and absorption minutes use single-line label/value/unit rows, with 6-point vertical insets and a 44-point minimum row height. Section spacing is 12 points on iOS 17 or newer; larger accessibility text sizes use stacked numeric fields. Draft values are populated before the screen changes to review. Low-confidence results explain the required **Reviewed estimate** checkbox. Completion requires Loop to accept the transfer: rejection keeps the numbers editable, displays a reason and leaves **Use in Loop** available for retry. Regression tests cover rejection/retry, edited locale values, duplicate delivery and invalid or unacknowledged input.
+
+After transfer, textual food descriptions use a full-width multiline field beneath the Food Type label in Loop's native carb editor. On iOS 16 or newer the field grows with its wrapped text; iOS 15 uses a scrolling multiline editor. Editing or clearing a description keeps that editor active, with a Done keyboard action. The existing emoji shortcuts remain available for emoji entries. The bolus summary places the amount, time/absorption and full wrapped description on separate lines, so the description is no longer squeezed between columns. No description text is shortened or discarded, and the quantity, absorption, storage and bolus calculations are unchanged.
+
+For an on-device layout check, transfer a long name such as "Lindt chocolate cone (wrapped, small novelty size)", edit or clear it, and continue to the bolus summary. Check portrait width, larger text and keyboard dismissal. The CI checks compilation and transfer logic; the updated layout still needs a phone check after installation.
+
+At the owner's request, accepting the camera capture now starts analysis automatically. The separate **Photo upload** confirmation screen is removed. Cancelling the camera sends no photo. UIKit application state and notifications handle active/background transitions in both Loop's UIKit host and the standalone SwiftUI app. The result remains editable and **Use in Loop** still requires accepting the reviewed values.
+
+The Loop screen always uses the real AI provider; the standalone mock demo cannot feed this integration. Cancellation, clarification and failed/invalid responses leave the existing entry unchanged. Editing a favorite before photographing a meal does not let a queued favorite-selection update overwrite the accepted review.
+
+## Source and build
+
+The overlay is pinned to Loop **`c30b5c89b1dc4151628f33f1384dd4796eaeeec2`**, the existing feature branch's **3.14.9** source. `apply.py` refuses another pin before applying `LoopMealReview.patch`. `configure_project.rb` links the workspace's local `FoodRecognitionUI` package into the Loop target. Changes occur in the build checkout; the recorded Loop/LoopKit submodule pointers and `main` are unchanged.
+
+The existing Loop source belongs to upstream LoopKit. A pinned build overlay is used here so the integration can be built and reviewed without unpublished submodule commits or a new upstream fork. A future source upgrade must rebase the overlay and pass a complete simulator build.
+
+`.github/workflows/food_recognition_loop.yml` tests the core and compiles the full Loop workspace before signing. Only an explicit new `Integration/request.json` revision requests an upload. The `upload_testflight` operation reuses the existing Loop signing lane and uploads to internal TestFlight, without installing an app on the phone or enabling external testing.
+
+For a signing-only retry, a request can name the previously validated source/run. `reuse_validation.py` checks the source SHA, successful full compile step and changed-file list before reusing compilation. App source, package, overlay, submodule and code-to-documentation rename changes require a fresh compile. Local tests cover these cases. Raw simulator output is kept in the temporary runner log and its tail is printed so signing diagnostics remain readable. On failure, compiler-error contexts are printed before that tail.
+
+The temporary build checkout orders the Loop app after the workspace's plugin targets and disables parallel target builds. This prevents Loop's dynamic plugin-copy script from copying unfinished plugin bundles before their generated `Info.plist` files exist. Compilation within a target can still use multiple jobs. Tests cover target order, preserved target identifiers/configuration, repeated configuration and refusing missing/duplicate app entries. Both simulator and signed device builds use this scheme; validation is retained.
+
+## No credential entry
+
+The server URL is preconfigured. For the requested personal builds, `configure_meal_review.py` writes the owner's **tester login** from the existing `FOOD_TESTER_ACCESS_CODE` Actions secret into the temporary app plist before signing. The first launch uses it automatically and stores the resulting connection in the device Keychain. Later sessions renew without typing. The tester login is therefore contained in these signed app bundles; it is not committed to source. OpenAI and Cloudflare provider credentials remain on the server/in Actions secret storage.
+
+For builds that do not run this owner-configuration step, the standalone app retains one-time manual setup. The normal CI simulator checks use no real login and make no paid model calls.

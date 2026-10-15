@@ -1,0 +1,56 @@
+name: Food recognition prototype checks
+
+on:
+  pull_request:
+    paths:
+      - 'Prototypes/AIFoodRecognition/**'
+      - '.github/workflows/food_recognition_prototype.yml'
+      - '.github/workflows/food_recognition_backend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Prototypes/AIFoodRecognition/Backend/package-lock.json
+      - name: Validate backend without credentials, image uploads or deployment
+        working-directory: Prototypes/AIFoodRecognition/Backend
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          npm ci
+          npm run check
+          npm test
+          npx --no-install wrangler deploy --dry-run --outdir "$RUNNER_TEMP/LoopPlusWorkerDryRun"
+  prototype:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test dependency-free core
+        working-directory: Prototypes/AIFoodRecognition
+        run: swift test
+      - name: Test prototype distribution guards and Ruby syntax
+        run: |
+          ruby Prototypes/AIFoodRecognition/Distribution/settings_test.rb
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review_test.py
+          ruby -c Prototypes/AIFoodRecognition/Distribution/fastlane/Fastfile
+      - name: Compile standalone iPhone UI without signing or installation
+        run: >-
+          xcodebuild
+          -project Prototypes/AIFoodRecognition/PrototypeApp/FoodRecognitionPrototype.xcodeproj
+          -scheme FoodRecognitionPrototype
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/FoodRecognitionPrototypeDerivedData"
+          CODE_SIGNING_ALLOWED=NO build

@@ -1,0 +1,139 @@
+name: Loop meal photo review
+run-name: Loop meal photo review (${{ github.ref_name }})
+
+on:
+  push:
+    branches: ['feature/ai-food-recognition']
+    paths: ['Prototypes/AIFoodRecognition/Integration/request.json']
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        description: Compile the Loop integration or upload the personal build to internal TestFlight
+        options: [validate_only, upload_testflight]
+        default: validate_only
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: loop-meal-review-integration
+  cancel-in-progress: true
+
+jobs:
+  loop:
+    if: github.ref == 'refs/heads/feature/ai-food-recognition'
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Read the Loop integration request
+        id: request
+        env:
+          DISPATCH_OPERATION: ${{ inputs.operation }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          request = json.loads(Path('Prototypes/AIFoodRecognition/Integration/request.json').read_text())
+          operation = os.environ.get('DISPATCH_OPERATION') or request.get('operation')
+          if operation not in {'validate_only', 'upload_testflight'} or type(request.get('revision')) is not int or request['revision'] < 1:
+              raise SystemExit('Invalid Loop integration request')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'operation={operation}\n')
+          print(f'Loop 3.14.9 meal review: {operation}')
+          PY
+      - name: Select installed Xcode 26 or newer
+        run: |
+          python3 - <<'PY'
+          import re, subprocess
+          from pathlib import Path
+          candidates = []
+          for app in Path('/Applications').glob('Xcode_*.app'):
+              match = re.fullmatch(r'Xcode_(\d+)(?:\.(\d+))?(?:\.(\d+))?\.app', app.name)
+              if match:
+                  version = tuple(int(part or 0) for part in match.groups())
+                  if version[0] >= 26:
+                      candidates.append((version, app))
+          if not candidates:
+              raise SystemExit('Xcode 26 or newer is required.')
+          _, app = max(candidates)
+          subprocess.run(['sudo', 'xcode-select', '--switch', str(app / 'Contents/Developer')], check=True)
+          subprocess.run(['xcodebuild', '-version'], check=True)
+          PY
+      - name: Test connection renewal, review transfer and personal configuration
+        run: |
+          swift test --package-path Prototypes/AIFoodRecognition
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review_test.py
+          python3 Prototypes/AIFoodRecognition/Integration/reuse_validation_test.py
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme_test.py
+          ruby -c Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          ruby -c Prototypes/AIFoodRecognition/Integration/fastlane/Fastfile
+      - name: Install existing pinned build tools
+        run: bundle install
+      - name: Apply the overlay and link the shared UI
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme.py
+      - name: Verify whether the unchanged app already passed simulator compilation
+        id: validation
+        env:
+          ACTIONS_READ_TOKEN: ${{ github.token }}
+        run: python3 Prototypes/AIFoodRecognition/Integration/reuse_validation.py
+      - name: Compile integrated Loop without signing
+        if: steps.validation.outputs.reuse != 'true'
+        run: |
+          set +e
+          xcodebuild -workspace LoopWorkspace.xcworkspace \
+            -scheme LoopWorkspace \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/LoopMealReviewUnsigned" \
+            CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/LoopMealReviewCompile.log" 2>&1
+          result=$?
+          if [ "$result" -ne 0 ]; then
+            python3 - "$RUNNER_TEMP/LoopMealReviewCompile.log" <<'PY'
+          import sys
+          from pathlib import Path
+          lines = Path(sys.argv[1]).read_text(errors='replace').splitlines()
+          errors = [index for index, line in enumerate(lines) if 'error:' in line]
+          for index in errors[:30]:
+              print('\n'.join(lines[max(0, index - 2):index + 6]))
+          PY
+          fi
+          tail -n 150 "$RUNNER_TEMP/LoopMealReviewCompile.log"
+          exit "$result"
+      - name: Preconfigure personal meal review login
+        if: steps.request.outputs.operation == 'upload_testflight'
+        env:
+          FOOD_TESTER_ACCESS_CODE: ${{ secrets.FOOD_TESTER_ACCESS_CODE }}
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review.py
+          --plist Loop/Loop/Info.plist
+      - name: Build and upload integrated Loop for internal testing
+        if: steps.request.outputs.operation == 'upload_testflight'
+        working-directory: Prototypes/AIFoodRecognition/Integration
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          TEAMID: ${{ secrets.TEAMID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios upload_meal_review_loop
+      - name: Retain the signed Loop build
+        if: success() && steps.request.outputs.operation == 'upload_testflight'
+        uses: actions/upload-artifact@v4
+        with:
+          name: LoopMealReview-${{ github.run_number }}
+          path: Loop.ipa
+          if-no-files-found: error
+          retention-days: 7

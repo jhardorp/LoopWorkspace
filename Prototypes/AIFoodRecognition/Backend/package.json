@@ -1,0 +1,16 @@
+{
+  "name": "loop-plus-meal-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/worker.js && node --check src/contract.js && node --check src/auth.js && node --check src/refinement.js && node --check scripts/deploy.mjs && node --check scripts/deployment-settings.mjs && node --check scripts/check-configuration.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "miniflare": "5.20261006.1-alpha",
+    "wrangler": "4.149.0"
+  }
+}

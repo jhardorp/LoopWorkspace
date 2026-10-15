@@ -43,3 +43,11 @@ Select the LoopConfigOverride file in Xcode's project navigator, uncomment the `
 ### Build
 
 Select the "LoopWorkspace" scheme (not the "Loop" scheme) and Build, Run, or Test.
+
+### Meal photo review
+
+The shared [meal-review UI](Prototypes/AIFoodRecognition/README.md) puts editable carb grams and absorption minutes above the explanations. Compact rows keep each numeric label, value and unit on one line, with less padding and smaller section gaps. The photo service allows 1,000 photos per UTC day and 60 per minute. Personal signed builds preconfigure the server/tester login and renew sessions automatically. The standalone Loop+ app and the [pinned Loop 3.14.9 integration](Prototypes/AIFoodRecognition/Integration/README.md) use the same screen. The integration adds **Photograph meal** to Loop's carb-entry screen; accepting the camera capture starts analysis automatically, without a separate upload confirmation. **Use in Loop** copies reviewed values into the existing editable fields before the normal Continue flow.
+
+In native Loop, textual food descriptions use a full-width multiline field below the Food Type label. The bolus summary shows the full wrapped description below the carb amount and time/absorption. The complete description remains editable and is preserved.
+
+Apple accepted **Loop+ 0.4.0 (4)** and **integrated Loop 3.14.9 (24)** through the checked TestFlight workflows. The native update passed all 46 Swift tests, configuration checks, full simulator compilation, signed device/Watch archive and upload in [run 38497005480](https://github.com/jhardorp/LoopWorkspace/actions/runs/38497005480). The phone update follows Apple processing.
