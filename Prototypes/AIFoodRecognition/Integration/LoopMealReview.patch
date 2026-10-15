@@ -9,18 +9,24 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
  
  struct CarbEntryView: View, HorizontalSizeClassOverride {
      @EnvironmentObject private var displayGlucosePreference: DisplayGlucosePreference
-@@ -21,6 +22,10 @@
+@@ -21,7 +22,15 @@
      
      @State private var showHowAbsorptionTimeWorks = false
      @State private var showAddFavoriteFood = false
-+    @State private var showMealReview = false
-+    @State private var startsWithMealPhotoLibrary = false
+-    
++    @State private var mealReviewSource: MealReviewSource?
 +    @FocusState private var foodDescriptionFocused: Bool
 +    @State private var usesFoodDescriptionEditor = false
-     
++
++    private enum MealReviewSource: String, Identifiable {
++        case camera, photoLibrary
++        var id: String { rawValue }
++    }
++
      private let isNewEntry: Bool
  
-@@ -87,8 +92,25 @@
+     init(viewModel: CarbEntryViewModel) {
+@@ -87,8 +96,25 @@
              }
          }
          .alert(item: $viewModel.alert, content: alert(for:))
@@ -32,12 +38,12 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
          .sheet(isPresented: $showAddFavoriteFood, onDismiss: clearExpandedRow) {
              AddEditFavoriteFoodView(carbsQuantity: $viewModel.carbsQuantity.wrappedValue, foodType: $viewModel.foodType.wrappedValue, absorptionTime: $viewModel.absorptionTime.wrappedValue, onSave: onFavoriteFoodSave(_:))
 +        }
-+        .sheet(isPresented: $showMealReview) {
-+            FoodRecognitionView(startsWithCamera: !startsWithMealPhotoLibrary, startsWithPhotoLibrary: startsWithMealPhotoLibrary) { meal in
++        .sheet(item: $mealReviewSource) { source in
++            FoodRecognitionView(startsWithCamera: source == .camera, startsWithPhotoLibrary: source == .photoLibrary) { meal in
 +                if viewModel.applyPhotoReview(carbohydrateGrams: meal.carbohydrateGrams,
 +                                             absorptionMinutes: meal.absorptionMinutes,
 +                                             foodDescription: meal.foodDescription) {
-+                    showMealReview = false
++                    mealReviewSource = nil
 +                    clearExpandedRow()
 +                    return true
 +                }
@@ -46,7 +52,7 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
          }
          .sheet(isPresented: $showHowAbsorptionTimeWorks) {
              HowAbsorptionTimeWorksView()
-@@ -110,12 +132,37 @@
+@@ -110,12 +136,35 @@
              
              CardSectionDivider()
              
@@ -65,8 +71,7 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
 +            if isNewEntry {
 +                CardSectionDivider()
 +                Button {
-+                    startsWithMealPhotoLibrary = false
-+                    showMealReview = true
++                    mealReviewSource = .camera
 +                } label: {
 +                    Label("Photograph meal", systemImage: "camera")
 +                        .frame(maxWidth: .infinity, alignment: .leading)
@@ -74,8 +79,7 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
 +                .accessibilityIdentifier("photographMealInLoop")
 +                CardSectionDivider()
 +                Button {
-+                    startsWithMealPhotoLibrary = true
-+                    showMealReview = true
++                    mealReviewSource = .photoLibrary
 +                } label: {
 +                    Label("Choose photo", systemImage: "photo.on.rectangle")
 +                        .frame(maxWidth: .infinity, alignment: .leading)
@@ -85,7 +89,7 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
          }
          .padding(.vertical, 12)
          .padding(.horizontal)
-@@ -133,7 +180,57 @@
+@@ -133,7 +182,57 @@
      }
      
      private func clearExpandedRow() {
