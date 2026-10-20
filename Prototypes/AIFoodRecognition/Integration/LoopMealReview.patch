@@ -251,7 +251,7 @@ index 0411899..c42acca 100644
  
  // MARK: - Warnings & Alerts
 diff --git a/LoopTests/ViewModels/BolusEntryViewModelTests.swift b/LoopTests/ViewModels/BolusEntryViewModelTests.swift
-index dd26c27..e93bfd1 100644
+index dd26c27..124c84d 100644
 --- a/LoopTests/ViewModels/BolusEntryViewModelTests.swift
 +++ b/LoopTests/ViewModels/BolusEntryViewModelTests.swift
 @@ -12,6 +12,7 @@ import LoopKit
@@ -262,7 +262,7 @@ index dd26c27..e93bfd1 100644
  import LoopAlgorithm
  
  @testable import Loop
-@@ -1070,3 +1071,134 @@ extension StoredGlucoseSample {
+@@ -1070,3 +1071,136 @@ extension StoredGlucoseSample {
          StoredGlucoseSample(startDate: date, quantity: .glucose(value: value))
      }
  }
@@ -298,7 +298,8 @@ index dd26c27..e93bfd1 100644
 +        let delegate = Delegate()
 +        let vm = CarbEntryViewModel(delegate: delegate)
 +        let time = vm.time, settings = delegate.settings
-+        XCTAssertTrue(vm.applyPhotoReview(try await meal(), request: vm.beginPhotoReview()))
++        let reviewed = try await meal()
++        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: vm.beginPhotoReview()))
 +        XCTAssertEqual(vm.carbsQuantity, 12.5)
 +        XCTAssertEqual(vm.absorptionTime, 5430)
 +        XCTAssertEqual(vm.foodType, "Two large slices; banana not ripe")
@@ -350,7 +351,8 @@ index dd26c27..e93bfd1 100644
 +        let vm = CarbEntryViewModel(delegate: delegate)
 +        vm.favoriteFoods = [StoredFavoriteFood(name: "Favorite", carbsQuantity: LoopQuantity(unit: .gram, doubleValue: 70), foodType: "Favorite food", absorptionTime: 14400)]
 +        vm.selectedFavoriteFoodIndex = 0
-+        XCTAssertTrue(vm.applyPhotoReview(try await meal(), request: vm.beginPhotoReview()))
++        let reviewed = try await meal()
++        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: vm.beginPhotoReview()))
 +        try await Task.sleep(nanoseconds: 100_000_000)
 +        XCTAssertEqual(vm.selectedFavoriteFoodIndex, -1)
 +        XCTAssertEqual(vm.carbsQuantity, 12.5)
