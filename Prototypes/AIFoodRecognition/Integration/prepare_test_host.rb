@@ -23,4 +23,4 @@ tests.build_configurations.each do |config|
   config.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = conditions.join(' ')
 end
 project.save
-puts 'Prepared a minimal unsigned test host; LoopAppManager, Siri and device services are not started.'
+puts 'Prepared a minimal Simulator test host; LoopAppManager, Siri and device services are not started.'

@@ -19,6 +19,8 @@ jobs:
     if: github.ref == 'refs/heads/migration/loop4-ai-photo'
     runs-on: macos-26-intel
     timeout-minutes: 120
+    env:
+      LOOP_SIMULATOR_BUNDLE_ID: org.loopkit.experimental.AIMealSimulator
     steps:
       - uses: actions/checkout@v5
         with:
@@ -60,15 +62,32 @@ jobs:
       - name: Build integrated app for iOS Simulator unsigned
         run: |
           set -o pipefail
+          device=$(python3 -c 'import json,os; from pathlib import Path; print(json.loads((Path(os.environ["RUNNER_TEMP"]) / "LoopMigrationStartup/device.json").read_text())["device"])')
           xcodebuild -workspace LoopWorkspace.xcworkspace -scheme LoopWorkspace \
-            -destination 'generic/platform=iOS Simulator' -onlyUsePackageVersionsFromResolvedFile \
+            -destination "platform=iOS Simulator,id=$device" -onlyUsePackageVersionsFromResolvedFile \
             -derivedDataPath "$RUNNER_TEMP/LoopMigration" \
+            MAIN_APP_BUNDLE_IDENTIFIER="$LOOP_SIMULATOR_BUNDLE_ID" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build \
             > "$RUNNER_TEMP/LoopMigrationBuild.log" 2>&1 || {
               tail -n 180 "$RUNNER_TEMP/LoopMigrationBuild.log"
               exit 1
             }
           tail -n 12 "$RUNNER_TEMP/LoopMigrationBuild.log"
+      - name: Package normal Simulator startup with Xcode ad-hoc signing
+        id: simulator_signing
+        run: |
+          device=$(python3 -c 'import json,os; from pathlib import Path; print(json.loads((Path(os.environ["RUNNER_TEMP"]) / "LoopMigrationStartup/device.json").read_text())["device"])')
+          xcodebuild -workspace LoopWorkspace.xcworkspace -scheme LoopWorkspace \
+            -destination "platform=iOS Simulator,id=$device" -onlyUsePackageVersionsFromResolvedFile \
+            -derivedDataPath "$RUNNER_TEMP/LoopMigration" \
+            MAIN_APP_BUNDLE_IDENTIFIER="$LOOP_SIMULATOR_BUNDLE_ID" \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= build \
+            > "$RUNNER_TEMP/LoopMigrationSimulatorSigning.log" 2>&1 || {
+              tail -n 180 "$RUNNER_TEMP/LoopMigrationSimulatorSigning.log"
+              exit 1
+            }
+          tail -n 12 "$RUNNER_TEMP/LoopMigrationSimulatorSigning.log"
       - name: Probe normal application startup in a disposable Simulator
         id: startup
         run: |
@@ -80,9 +99,9 @@ jobs:
               exit 1
             }
           cat "$RUNNER_TEMP/LoopMigrationStartup.log"
-      - name: Prepare isolated unsigned native adapter test host
+      - name: Prepare isolated native adapter test host
         id: test_host
-        if: ${{ !cancelled() && (success() || steps.startup.outcome == 'failure') }}
+        if: ${{ !cancelled() && (success() || steps.startup.outcome == 'failure' || steps.simulator_signing.outcome == 'failure') }}
         run: bundle exec ruby Prototypes/AIFoodRecognition/Integration/prepare_test_host.rb
       - name: Run native adapter regression tests on Simulator
         if: ${{ !cancelled() && steps.test_host.outcome == 'success' }}
@@ -92,7 +111,9 @@ jobs:
           xcodebuild -workspace LoopWorkspace.xcworkspace -scheme LoopWorkspace \
             -destination "platform=iOS Simulator,id=$device" -onlyUsePackageVersionsFromResolvedFile \
             -derivedDataPath "$RUNNER_TEMP/LoopMigration" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build \
+            MAIN_APP_BUNDLE_IDENTIFIER="$LOOP_SIMULATOR_BUNDLE_ID" \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= build \
             > "$RUNNER_TEMP/LoopMigrationTestHost.log" 2>&1 || {
               tail -n 180 "$RUNNER_TEMP/LoopMigrationTestHost.log"
               exit 1
@@ -102,7 +123,9 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/LoopMigration" \
             -resultBundlePath "$RUNNER_TEMP/MealPhotoMigration.xcresult" \
             -only-testing:LoopTests/MealPhotoMigrationTests \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test \
+            MAIN_APP_BUNDLE_IDENTIFIER="$LOOP_SIMULATOR_BUNDLE_ID" \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= test \
             > "$RUNNER_TEMP/LoopMigrationTests.log" 2>&1 || {
               tail -n 180 "$RUNNER_TEMP/LoopMigrationTests.log"
               exit 1
@@ -123,6 +146,7 @@ jobs:
           name: experimental-loop-ai-validation-${{ github.sha }}
           path: |
             ${{ runner.temp }}/LoopMigrationBuild.log
+            ${{ runner.temp }}/LoopMigrationSimulatorSigning.log
             ${{ runner.temp }}/LoopMigrationTests.log
             ${{ runner.temp }}/LoopMigrationTestHost.log
             ${{ runner.temp }}/LoopMigrationStartup.log

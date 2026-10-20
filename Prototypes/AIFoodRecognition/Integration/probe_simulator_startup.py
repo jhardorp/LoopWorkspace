@@ -67,12 +67,14 @@ def main():
     info = plistlib.loads((app / "Info.plist").read_bytes())
     if info.get("CFBundleSupportedPlatforms") != ["iPhoneSimulator"] or "UIApplicationSceneManifest" not in info:
         raise SystemExit("Expected the normal Simulator app with its original scene configuration.")
+    if info.get("CFBundleIdentifier") != "org.loopkit.experimental.AIMealSimulator":
+        raise SystemExit("Expected the disposable CI app identity, not an empty team or production identity.")
     if not state_path.exists():
         prepare_device(output)
     with tempfile.TemporaryDirectory(prefix="LoopStartup-", dir=os.environ["RUNNER_TEMP"]) as staging:
         copy = Path(staging) / app.name
         shutil.copytree(app, copy, symlinks=True)
-        probe(copy, info, output, loop)
+        probe(copy, info, output)
 
 
 def prepare_device(output):
@@ -103,21 +105,17 @@ def prepared_device(output, allow_missing=False):
     return state
 
 
-def probe(app, info, output, loop):
+def probe(app, info, output):
     bundle = info["CFBundleIdentifier"]
     executable = info["CFBundleExecutable"]
 
-    # Ad-hoc Simulator signing has no Apple identity, provisioning profile or upload.
-    # The unsigned build remains a separate check. Siri checks require this entitlement
-    # even on Simulator; retain the app's original entitlements and expanded app group.
-    entitlements = plistlib.loads((loop / "Loop/Loop.entitlements").read_bytes())
-    entitlements["com.apple.security.application-groups"] = [info["AppGroupIdentifier"]]
-    entitlements_path = output / "simulator-entitlements.plist"
-    entitlements_path.write_bytes(plistlib.dumps(entitlements))
-    # Only this disposable copy is ad-hoc signed, including its embedded bundles.
-    # No signed app product is retained or distributed, and the build/test host is untouched.
-    run("codesign", "--force", "--deep", "--sign", "-", str(app))
-    run("codesign", "--force", "--sign", "-", "--entitlements", str(entitlements_path), str(app))
+    # Xcode packages the app's Simulator entitlements. Do not synthesize them or
+    # re-sign an unsigned bundle manually; preserve the verified ad-hoc product.
+    signature = run("codesign", "--display", "--verbose=4", str(app))
+    if "Signature=adhoc" not in signature:
+        raise SystemExit("Startup probe requires an ad-hoc Simulator build without an Apple identity.")
+    run("codesign", "--verify", "--deep", "--strict", str(app))
+    (output / "signature.txt").write_text(signature)
 
     state = prepared_device(output)
     device = state["device"]
@@ -153,7 +151,8 @@ def probe(app, info, output, loop):
         if report["status"] != "passed":
             print(f"Startup probe failed during {report['phase']}.", file=sys.stderr)
         try:
-            logs = subprocess.run(["xcrun", "simctl", "spawn", device, "log", "show", "--last", "15m", "--style", "compact", "--predicate", 'process == "Loop" OR process == "installd" OR process == "containermanagerd"'], capture_output=True, text=True, timeout=30)
+            predicate = f'process == "Loop" OR process == "installd" OR process == "containermanagerd" OR ((process == "SpringBoard" OR process == "runningboardd" OR process == "launchd_sim" OR process == "amfid") AND eventMessage CONTAINS[c] "{bundle}")'
+            logs = subprocess.run(["xcrun", "simctl", "spawn", device, "log", "show", "--last", "15m", "--style", "compact", "--predicate", predicate], capture_output=True, text=True, timeout=30)
             (output / "application.log").write_text((logs.stdout + logs.stderr)[-200000:])
             if report["status"] != "passed":
                 print(f"Startup probe failed during {report['phase']}; recent Simulator diagnostics:", file=sys.stderr)
