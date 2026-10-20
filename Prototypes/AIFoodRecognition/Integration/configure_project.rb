@@ -13,9 +13,7 @@ unless reference
   reference.relative_path = '../Prototypes/AIFoodRecognition'
   project.root_object.package_references << reference
 end
-([target].product(['FoodRecognitionUI', 'FoodRecognitionCore']) +
- [[project.targets.find { |item| item.name == 'LoopTests' }, 'FoodRecognitionCore']]).each do |target, product|
-abort('Missing package consumer target') unless target
+['FoodRecognitionUI', 'FoodRecognitionCore'].each do |product|
 dependency = target.package_product_dependencies.find { |item| item.product_name == product }
 unless dependency
   dependency = project.new(objects::XCSwiftPackageProductDependency)

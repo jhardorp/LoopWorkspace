@@ -251,18 +251,10 @@ index 0411899..c42acca 100644
  
  // MARK: - Warnings & Alerts
 diff --git a/LoopTests/ViewModels/BolusEntryViewModelTests.swift b/LoopTests/ViewModels/BolusEntryViewModelTests.swift
-index dd26c27..124c84d 100644
+index dd26c27..9295e2d 100644
 --- a/LoopTests/ViewModels/BolusEntryViewModelTests.swift
 +++ b/LoopTests/ViewModels/BolusEntryViewModelTests.swift
-@@ -12,6 +12,7 @@ import LoopKit
- import LoopKitUI
- import SwiftUI
- import XCTest
-+import FoodRecognitionCore
- import LoopAlgorithm
- 
- @testable import Loop
-@@ -1070,3 +1071,136 @@ extension StoredGlucoseSample {
+@@ -1070,3 +1070,127 @@ extension StoredGlucoseSample {
          StoredGlucoseSample(startDate: date, quantity: .glucose(value: value))
      }
  }
@@ -281,17 +273,8 @@ index dd26c27..124c84d 100644
 +        }
 +    }
 +
-+    private func meal() async throws -> ReviewedMeal {
-+        let session = MealEstimateSession()
-+        await session.analyze(photo: .demo, using: MockFoodEstimator(delayNanoseconds: 0))
-+        var draft = try XCTUnwrap(session.draft)
-+        draft.carbohydrateText = "12,5"
-+        draft.absorptionMinutesText = "90,5"
-+        draft.mealNotes = "Two large slices; banana not ripe"
-+        session.edit(draft)
-+        var result: ReviewedMeal?
-+        XCTAssertTrue(session.finishReview(locale: Locale(identifier: "de_DE")) { result = $0; return true })
-+        return try XCTUnwrap(result)
++    private func meal() async throws -> MealPhotoTestReview {
++        try await MealPhotoTestReview.make()
 +    }
 +
 +    func testReviewedValuesStayEditableWithoutSavingOrBolusNavigation() async throws {
@@ -299,7 +282,7 @@ index dd26c27..124c84d 100644
 +        let vm = CarbEntryViewModel(delegate: delegate)
 +        let time = vm.time, settings = delegate.settings
 +        let reviewed = try await meal()
-+        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: vm.beginPhotoReview()))
++        XCTAssertTrue(reviewed.apply(to: vm, request: vm.beginPhotoReview()))
 +        XCTAssertEqual(vm.carbsQuantity, 12.5)
 +        XCTAssertEqual(vm.absorptionTime, 5430)
 +        XCTAssertEqual(vm.foodType, "Two large slices; banana not ripe")
@@ -322,9 +305,9 @@ index dd26c27..124c84d 100644
 +        let delegate = Delegate()
 +        let vm = CarbEntryViewModel(delegate: delegate)
 +        let request = vm.beginPhotoReview(), reviewed = try await meal()
-+        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: request))
++        XCTAssertTrue(reviewed.apply(to: vm, request: request))
 +        vm.carbsQuantity = 20
-+        XCTAssertFalse(vm.applyPhotoReview(reviewed, request: request))
++        XCTAssertFalse(reviewed.apply(to: vm, request: request))
 +        XCTAssertEqual(vm.carbsQuantity, 20)
 +        XCTAssertTrue(delegate.carbEntriesAdded.isEmpty)
 +    }
@@ -336,12 +319,12 @@ index dd26c27..124c84d 100644
 +        vm.foodType = "Manual entry"
 +        let reviewed = try await meal(), cancelled = vm.beginPhotoReview()
 +        vm.cancelPhotoReview()
-+        XCTAssertFalse(vm.applyPhotoReview(reviewed, request: cancelled))
++        XCTAssertFalse(reviewed.apply(to: vm, request: cancelled))
 +        let old = vm.beginPhotoReview(), current = vm.beginPhotoReview()
-+        XCTAssertFalse(vm.applyPhotoReview(reviewed, request: old))
++        XCTAssertFalse(reviewed.apply(to: vm, request: old))
 +        XCTAssertEqual(vm.carbsQuantity, 22)
 +        XCTAssertEqual(vm.foodType, "Manual entry")
-+        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: current))
++        XCTAssertTrue(reviewed.apply(to: vm, request: current))
 +        XCTAssertTrue(delegate.carbEntriesAdded.isEmpty)
 +        XCTAssertNil(vm.bolusViewModel)
 +    }
@@ -352,7 +335,7 @@ index dd26c27..124c84d 100644
 +        vm.favoriteFoods = [StoredFavoriteFood(name: "Favorite", carbsQuantity: LoopQuantity(unit: .gram, doubleValue: 70), foodType: "Favorite food", absorptionTime: 14400)]
 +        vm.selectedFavoriteFoodIndex = 0
 +        let reviewed = try await meal()
-+        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: vm.beginPhotoReview()))
++        XCTAssertTrue(reviewed.apply(to: vm, request: vm.beginPhotoReview()))
 +        try await Task.sleep(nanoseconds: 100_000_000)
 +        XCTAssertEqual(vm.selectedFavoriteFoodIndex, -1)
 +        XCTAssertEqual(vm.carbsQuantity, 12.5)
@@ -368,11 +351,11 @@ index dd26c27..124c84d 100644
 +        vm.foodType = "Keep me"
 +        let request = vm.beginPhotoReview(), reviewed = try await meal()
 +        vm.maxCarbEntryQuantity = LoopQuantity(unit: .gram, doubleValue: 10)
-+        XCTAssertFalse(vm.applyPhotoReview(reviewed, request: request))
++        XCTAssertFalse(reviewed.apply(to: vm, request: request))
 +        XCTAssertEqual(vm.carbsQuantity, 8)
 +        XCTAssertEqual(vm.foodType, "Keep me")
 +        vm.maxCarbEntryQuantity = LoopQuantity(unit: .gram, doubleValue: 250)
-+        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: request))
++        XCTAssertTrue(reviewed.apply(to: vm, request: request))
 +        XCTAssertNil(vm.bolusViewModel)
 +        XCTAssertTrue(delegate.carbEntriesAdded.isEmpty)
 +    }
@@ -380,13 +363,13 @@ index dd26c27..124c84d 100644
 +        let delegate = Delegate()
 +        let vm = CarbEntryViewModel(delegate: delegate)
 +        let reviewed = try await meal()
-+        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: vm.beginPhotoReview()))
++        XCTAssertTrue(reviewed.apply(to: vm, request: vm.beginPhotoReview()))
 +        vm.continueToBolus()
 +        for _ in 0..<100 where vm.bolusViewModel == nil { try await Task.sleep(nanoseconds: 10_000_000) }
 +        let first = try XCTUnwrap(vm.bolusViewModel?.carbEntryChange)
 +        guard case .add(let firstEntry) = first else { return XCTFail("Expected new entry") }
 +        vm.bolusViewModel = nil
-+        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: vm.beginPhotoReview()))
++        XCTAssertTrue(reviewed.apply(to: vm, request: vm.beginPhotoReview()))
 +        vm.carbsQuantity = 20
 +        vm.continueToBolus()
 +        for _ in 0..<100 where vm.bolusViewModel == nil { try await Task.sleep(nanoseconds: 10_000_000) }

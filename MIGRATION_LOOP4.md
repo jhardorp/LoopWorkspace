@@ -70,7 +70,9 @@ A cancelled photo review never modifies the existing carb fields. Successful lat
 2. Swift package regression tests: duplicate/reentrant handoff, cancellation, superseded presentations, native limits, locale values, refinement, confidence acknowledgement, failed/rejected transfer and retries.
 3. Unchanged backend syntax and contract tests without real provider requests.
 4. Full integrated iOS Simulator build with signing disabled.
-5. Mock-only native adapter tests covering no save/no bolus side effects, edits, duplicate callbacks, cancellation, stale callbacks, queued favorites, unit conversion atomic native-limit rejection, and one stable new-entry sync identifier across repeated reviews/Continue.
+5. Mock-only native adapter tests in a minimal unsigned Simulator host covering no save/no bolus side effects, edits, duplicate callbacks, cancellation, stale callbacks, queued favorites, unit conversion atomic native-limit rejection, and one stable new-entry sync identifier across repeated reviews/Continue.
+
+The full real application is built **before** test-host preparation. Only in the ephemeral migration CI checkout, `prepare_test_host.rb` then replaces main.swift and removes the scene manifest to prevent starting LoopAppManager/Siri/device services without entitlements. It does not change the committed application overlay, production startup, signing configuration, or algorithms. The test fixture lives in the host and the test bundle does not separately link the package, avoiding duplicate class definitions. A second incremental host build and native tests follow. These adapter tests do not validate full application startup or camera/gallery UI end to end.
 
 CI build/test results are recorded below after execution. Passing CI is engineering evidence, not independent safety validation.
 
