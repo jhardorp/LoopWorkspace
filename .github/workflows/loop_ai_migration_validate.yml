@@ -18,7 +18,7 @@ jobs:
   validate:
     if: github.ref == 'refs/heads/migration/loop4-ai-photo'
     runs-on: macos-26-intel
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
         with:
@@ -31,6 +31,10 @@ jobs:
           xcodebuild -version
       - name: Verify pinned sources and protected production configuration
         run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - name: Start disposable Simulator first boot before compilation
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/probe_simulator_startup.py
+          --prepare-only --output "$RUNNER_TEMP/LoopMigrationStartup"
       - name: Run Swift review regression tests
         run: swift test --package-path Prototypes/AIFoodRecognition
       - uses: actions/setup-node@v4
@@ -131,6 +135,11 @@ jobs:
           STARTUP_OUTCOME: ${{ steps.startup.outcome }}
         run: |
           test "$STARTUP_OUTCOME" = success
+      - name: Clean up the disposable startup Simulator
+        if: always()
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/probe_simulator_startup.py
+          --cleanup-only --output "$RUNNER_TEMP/LoopMigrationStartup"
   archive_candidate:
     name: Archive candidate for a spare test device only
     if: >-

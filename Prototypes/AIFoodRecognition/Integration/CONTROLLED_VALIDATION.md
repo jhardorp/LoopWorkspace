@@ -6,11 +6,13 @@ Review: [draft PR #2](https://github.com/jhardorp/LoopWorkspace/pull/2), targeti
 
 Code commit `3ac9aed295a2fcacb34e8f71f7946fc55552d65f` passed 58 package tests, 26 backend contract tests, six native mock adapter tests and a complete unsigned Simulator build in [run 39397041333](https://github.com/jhardorp/LoopWorkspace/actions/runs/39397041333).
 
-The follow-up CI startup probe copies the normal Simulator app into a temporary directory, ad-hoc signs that copy without an Apple certificate, and launches it in a new disposable Simulator. It records a screenshot and requires the process to stay alive for 15 seconds. The app's original entry point, scene configuration and source remain intact. The copy and Simulator are deleted afterwards. This checks process survival at startup; it does not establish completed onboarding or photo-to-entry behavior. The original unsigned build and isolated adapter tests remain separate checks, and a failed startup probe fails the workflow after preserving the adapter results.
+The Intel follow-up at `06d3503f7c8f7b749128913fffef88c09c3c4e9a` also passed all **58 + 26 + 6 tests** and the full unsigned build in [run 39472150713](https://github.com/jhardorp/LoopWorkspace/actions/runs/39472150713). Its overall result was **failure**: the new Simulator exceeded the 180-second boot limit while completing Apple's first-boot migration, before app installation. The signed archive was skipped. The preceding Arm64 startup attempt timed out during installation after 120 seconds. Neither result establishes normal app startup.
+
+The follow-up CI startup probe starts a new disposable Simulator before compilation, using the same runtime/device type selection as the native tests. It later allows up to ten minutes for boot readiness, copies the normal Simulator app into a temporary directory, ad-hoc signs that copy without an Apple certificate, and attempts installation and launch. A passing measurement requires a screenshot and 15 seconds of process survival. The app's original entry point, scene configuration and source remain intact. The copy and Simulator are deleted afterwards; cleanup checks that the device belongs to this CI source. This checks process survival at startup; it does not establish completed onboarding or photo-to-entry behavior. The original unsigned build and isolated adapter tests remain separate checks, and a failed startup probe fails the workflow after preserving the adapter results. The prewarming fix is not yet validated on macOS.
 
 No independent clinical or safety validation has been performed. The authoring assistant's source review and automated tests cannot provide that independence.
 
-The follow-up workflow uses the supported `macos-26-intel` runner and explicitly selects Xcode 26.3 (17C529), which is listed in the [official runner image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md). The macOS 15 and macOS 26 Arm64 retries were cancelled before receiving a runner; no app code or dependency pin changed for this host fallback. The earlier passing build/tests used Arm64; record the actual Intel run outcome before claiming validation on this host. The device archive still targets iOS, independently of the Mac host architecture.
+The follow-up workflow uses the supported `macos-26-intel` runner and explicitly selects Xcode 26.3 (17C529), which is listed in the [official runner image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md). The macOS 15 and macOS 26 Arm64 retries were cancelled before receiving a runner; no app code or dependency pin changed for this host fallback. Both Arm64 and Intel builds/regressions have passed as recorded above. The device archive still targets iOS, independently of the Mac host architecture.
 
 ## Source review completed by the authoring assistant
 
@@ -25,7 +27,7 @@ The follow-up workflow uses the supported `macos-26-intel` runner and explicitly
 
 The existing `Loop meal photo review` upload workflow is restricted to the production feature branch and hardcodes its existing app identity. It must not be repurposed to ship this migration.
 
-Choose the test setup before signing a candidate:
+Choose the test setup before distributing or installing a candidate. The archive-only preparation below retains the existing identity for review and does not install anything:
 
 | Setup | Required preparation |
 |---|---|
@@ -36,7 +38,7 @@ A candidate must build the normal app, never the generated adapter test host. Re
 
 The validation workflow now offers a manual `prepare_signed_candidate` option (default **false**). An explicit `[archive-candidate]` marker in a migration push's head commit message requests the same archive when manual dispatch is unavailable. Ordinary pushes do not request signing. After validation passes in the same run, a separate job checks out the same source again, selects the same pinned Xcode 26.3, verifies protected configuration, applies the normal app overlay and invokes `experimental_archive/fastlane/Fastfile`. It uses existing signing with `MATCH_READONLY=true` and locked remote package versions. It does not create or renew certificates/profiles, upload to TestFlight, install on a device, merge, or deploy. The archive retains the personal tester login behavior from production. The IPA and a source/version/bundle/hash record are retained for seven days as review artifacts.
 
-This archive option retains the production app identity and is intended for a **spare test device only**. It is unsuitable for side-by-side installation on the working phone. TestFlight/device distribution is not implemented in this workflow. At preparation time there is no installable migration IPA or TestFlight build; record the actual archive result before claiming one exists. A test build must stay experimental until independent validation is recorded.
+This archive option retains the production app identity and is intended for eventual testing on a **spare test device only**. It is unsuitable for side-by-side installation on the working phone. It uses the existing App Store export method; that IPA cannot be installed directly on a phone. TestFlight/device distribution is not implemented in this workflow. At preparation time there is no migration archive or TestFlight build; record the actual archive result before claiming one exists. A test build must stay experimental until independent validation is recorded.
 
 ## Independent review and manual acceptance record
 

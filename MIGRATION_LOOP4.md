@@ -1,6 +1,6 @@
 # Experimental upstream migration — validation only
 
-No clinical use or insulin delivery from this migration until independently validated. No signing, TestFlight upload, device installation, backend deployment, or merge into production is authorized by this work.
+No clinical use or insulin delivery from this migration until independently validated. Engineering preparation includes an opt-in, validation-gated archive using existing read-only signing. TestFlight upload, device installation, backend deployment and merge into production remain outside this work.
 
 ## Reproducible source selection
 
@@ -58,19 +58,20 @@ Upgrading upstream necessarily incorporates upstream changes to those components
 | Native entry | Fills editable fields; preserves entry time; does not save or advance | Preserved; native favorites observer is cancelled before transfer so queued selection cannot overwrite it; upstream favorite chips/clear actions remain available |
 | Long food names | Full-width multiline editor and separate summary lines | Ported to the new editor and CarbEntryChange-based summary |
 | Submission | Normal Loop Continue / save flow | Entirely upstream; no automatic entry storage or bolus navigation |
-| Credentials | Personal release injects tester code into signed plist | No injection or signing during validation; production setup remains unchanged |
+| Credentials | Personal release injects tester code into signed plist | No injection during unsigned validation; the opt-in archive reuses the unchanged personal configurator. Production setup remains unchanged |
 
 A cancelled photo review never modifies the existing carb fields. Successful later reviews replace editable values rather than adding a carbohydrate entry. Upstream owns the stable new-entry sync identifier and all subsequent saving; this overlay does not modify it.
 
 ## Automated validation
 
-`loop_ai_migration_validate.yml` is restricted to the migration branch, has read-only repository permissions, no secret bindings, no upload operation and no signing/archive/deploy steps. It always performs a fresh unsigned Simulator build. It runs:
+`loop_ai_migration_validate.yml` is restricted to the migration branch and has read-only repository permissions. Its validation job has no secret bindings and always performs a fresh unsigned Simulator build. The separate, opt-in archive job described below uses existing signing only after validation passes. Neither job uploads to TestFlight, installs on a device or deploys. Validation runs:
 
 1. Exact source/dependency pin and protected production-configuration verification.
 2. Swift package regression tests: duplicate/reentrant handoff, cancellation, superseded presentations, native limits, locale values, refinement, confidence acknowledgement, failed/rejected transfer and retries.
 3. Unchanged backend syntax and contract tests without real provider requests.
 4. Full integrated iOS Simulator build with signing disabled.
-5. Mock-only native adapter tests in a minimal unsigned Simulator host covering no save/no bolus side effects, edits, duplicate callbacks, cancellation, stale callbacks, queued favorites, unit conversion atomic native-limit rejection, and one stable new-entry sync identifier across repeated reviews/Continue.
+5. A normal-app startup probe using an ad-hoc signed disposable copy on a fresh Simulator, measuring installation, launch and 15 seconds of process survival. This is separate from the unsigned build and does not use an Apple signing identity.
+6. Mock-only native adapter tests in a minimal unsigned Simulator host covering no save/no bolus side effects, edits, duplicate callbacks, cancellation, stale callbacks, queued favorites, unit conversion atomic native-limit rejection, and one stable new-entry sync identifier across repeated reviews/Continue.
 
 The full real application is built **before** test-host preparation. Only in the ephemeral migration CI checkout, `prepare_test_host.rb` then replaces main.swift and removes the scene manifest to prevent starting LoopAppManager/Siri/device services without entitlements. It does not change the committed application overlay, production startup, signing configuration, or algorithms. The test fixture lives in the host and the test bundle does not separately link the package, avoiding duplicate class definitions. A second incremental host build and native tests follow. These adapter tests do not validate full application startup or camera/gallery UI end to end.
 
@@ -96,15 +97,39 @@ The native cases verify cancellation/stale presentation, duplicate callback reje
 
 Earlier attempts exposed an async XCTest fixture assertion error and unsigned full-app startup's Siri entitlement requirement. The assertions were corrected, and the final native run uses the minimal host described above, without linking a second Core package copy into the test bundle. The final run passed without changing normal application startup or signing.
 
-Documentation-only commits after the validated code commit do not change the tested implementation. Passing CI is engineering evidence, not independent safety validation.
+The original passing run predates the following test-fixture guards and startup/archive tooling; their results are recorded separately. Passing CI is engineering evidence, not independent safety validation.
+
+### Follow-up validation and controlled archive preparation
+
+Draft review: [PR #2](https://github.com/jhardorp/LoopWorkspace/pull/2). The independent/manual acceptance record and installation routes are in [CONTROLLED_VALIDATION.md](Prototypes/AIFoodRecognition/Integration/CONTROLLED_VALIDATION.md).
+
+Follow-up code `212c3a2284431010b9316f9bff8c8c991f9b9e61` passed **58 Swift tests, 26 backend tests, all six native adapter cases and the complete unsigned Simulator build** in [run 39452304422](https://github.com/jhardorp/LoopWorkspace/actions/runs/39452304422). The overall run **failed**: the new normal-startup probe timed out installing its disposable Simulator app after 120 seconds, before launch. The final gate correctly prevented the signed archive. An intermediate successful-looking step was masked by `continue-on-error`; it was not a successful startup measurement.
+
+The probe/workflow fixes give installation up to ten minutes, record the failing phase and installer diagnostics, and display probe failures explicitly while still running the adapter tests. Host-dependent tests now compile only when the generated fixture is enabled in ephemeral CI; ordinary LoopTests builds do not reference that fixture. CI also requires six actual passing adapter cases, preventing an empty test run from succeeding.
+
+The macOS 15 retry `2bfc39e1062057680faf8ab62b692c300854a504` and macOS 26 Arm64 retry [39468430927](https://github.com/jhardorp/LoopWorkspace/actions/runs/39468430927) were cancelled before receiving runners. The supported Intel-host retry [39472150713](https://github.com/jhardorp/LoopWorkspace/actions/runs/39472150713), source `06d3503f7c8f7b749128913fffef88c09c3c4e9a`, completed with the **same Xcode 26.3 (17C529)**, app/module code and dependency pins:
+
+| Intel follow-up check | Result |
+|---|---|
+| Swift package tests | **58 passed**, 0 failures |
+| Unchanged backend contract tests | **26 passed**, 0 failures |
+| Full normal unsigned Simulator build | **BUILD SUCCEEDED**, 18:47:42 UTC |
+| Native adapter cases, including duplicate/cancellation and stable entry identity | **6 passed**, 0 failures; **TEST SUCCEEDED**, 19:24:24 UTC |
+| Normal-startup probe | **FAILED before app installation**: `simctl bootstatus` exceeded 180 seconds during Apple's first-boot data migration/system-app startup |
+| Overall workflow / signed archive | **FAILED / SKIPPED**; no app launch was measured and no signed IPA was produced |
+
+The next CI-only fix starts the disposable Simulator before compilation, using the native test destination's runtime/device type, and allows a bounded ten-minute boot-readiness wait. This gives Apple's first-boot migration time to finish while the app builds. Source/owned-device checks guard preparation and cleanup. Installation, launch, 15-second process survival and the strict archive gate remain required; no app, algorithm or dependency code changes. Syntax and mock ownership/runtime-selection checks passed locally; an actual macOS retry is still required before claiming startup success.
+
+An opt-in archive job is now prepared. It uses a fresh checkout of the validated source, the unchanged existing app identity, read-only provisioning and locked remote package versions. It retains an IPA and source/version/bundle/hash provenance for review, and has no TestFlight upload, installation or deployment step. This route is for a spare test device; side-by-side installation on the working phone requires distinct app/extension IDs, app group, URL scheme and profiles. A different bundle ID alone does not isolate HealthKit data. No signed migration IPA has been produced as of this record.
 
 ## Unresolved limitations and independent validation still required
 
-No unresolved compiler errors or failing automated tests remain in the recorded run. Full application startup, live camera/gallery interactions, real provider responses and clinical behavior have **not** been validated by these mock adapter tests. The native test class requires the workflow's generated host fixture; run it through the migration validation workflow, rather than the normal unprepared LoopTests scheme. Production signing/backend configuration was preserved, and no physical app, TestFlight release or deployment was changed.
+The recorded Arm64 and Intel runs have no unresolved compiler errors or failing regression tests. The added normal-startup probe remains unresolved: the earlier Arm64 attempt timed out during installation, and the Intel attempt timed out booting a new Simulator. Neither measured an app launch. Live camera/gallery interactions, real provider responses and clinical behavior have **not** been validated by the mock adapter tests. The native test class requires the workflow's generated host fixture; run it through the migration validation workflow, rather than the normal unprepared LoopTests scheme. Production signing/backend configuration was preserved, and no physical app, TestFlight release or deployment was changed.
 
 The following checks remain:
 
 - Human review of upstream changes and the adapter, especially carbohydrate quantities, units, absorption timing, notes, entry identity and normal Continue/save behavior.
+- Upgrade of existing production data has not been tested. A fresh Simulator launch does not validate migration of an existing installation's stores or settings.
 - Camera/gallery first presentation, cancellation while loading/analyzing, backgrounding, retries and network failures on the intended iOS version.
 - Small screens, large accessibility text, German decimal input, long/multiline food descriptions and favorites interaction.
 - Confidence warnings, clarification, unsent refinement comments and confirmation must continue to prevent unintended transfer.
