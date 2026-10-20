@@ -123,7 +123,10 @@ jobs:
           test "$STARTUP_OUTCOME" = success
   archive_candidate:
     name: Archive candidate for a spare test device only
-    if: github.ref == 'refs/heads/migration/loop4-ai-photo' && github.event_name == 'workflow_dispatch' && inputs.prepare_signed_candidate
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.prepare_signed_candidate) ||
+       (github.event_name == 'push' && contains(github.event.head_commit.message, '[archive-candidate]')))
     needs: validate
     runs-on: macos-15
     timeout-minutes: 90
