@@ -109,6 +109,9 @@ def probe(app, info, output, loop):
         try:
             logs = subprocess.run(["xcrun", "simctl", "spawn", device, "log", "show", "--last", "5m", "--style", "compact", "--predicate", 'process == "Loop" OR process == "installd" OR process == "containermanagerd"'], capture_output=True, text=True, timeout=30)
             (output / "application.log").write_text((logs.stdout + logs.stderr)[-200000:])
+            if report["status"] != "passed":
+                print(f"Startup probe failed during {report['phase']}; recent Simulator diagnostics:", file=sys.stderr)
+                print((logs.stdout + logs.stderr)[-12000:], file=sys.stderr)
         except subprocess.TimeoutExpired:
             report["diagnostics_timeout"] = True
         for command in [("terminate", device, bundle), ("shutdown", device), ("delete", device)]:
