@@ -74,9 +74,35 @@ A cancelled photo review never modifies the existing carb fields. Successful lat
 
 The full real application is built **before** test-host preparation. Only in the ephemeral migration CI checkout, `prepare_test_host.rb` then replaces main.swift and removes the scene manifest to prevent starting LoopAppManager/Siri/device services without entitlements. It does not change the committed application overlay, production startup, signing configuration, or algorithms. The test fixture lives in the host and the test bundle does not separately link the package, avoiding duplicate class definitions. A second incremental host build and native tests follow. These adapter tests do not validate full application startup or camera/gallery UI end to end.
 
-CI build/test results are recorded below after execution. Passing CI is engineering evidence, not independent safety validation.
+### Recorded results — 2026-10-20
 
-## Independent validation still required
+Validated code commit: **`3ac9aed295a2fcacb34e8f71f7946fc55552d65f`**.
+[Successful validation run 39397041333](https://github.com/jhardorp/LoopWorkspace/actions/runs/39397041333), job `118542215216`.
+Toolchain: **Xcode 26.3 (17C529)** on macos-15. Local package tests also passed in Swift 6.0.3 on Linux.
+
+| Check | Result |
+|---|---|
+| Exact workspace/dependency pins and protected production configuration | PASS |
+| Swift package tests | **58 passed**, 0 failures (54 existing + 4 new handoff regressions) |
+| Unchanged backend syntax/contract tests | **26 passed**, 0 failures; no deployment or paid model calls |
+| Full normal LoopWorkspace iOS Simulator build, signing disabled | **BUILD SUCCEEDED** at 09:15:10 UTC |
+| Isolated native adapter tests | **6 passed**, 0 failures; **TEST SUCCEEDED** at 09:25:13 UTC |
+| Duplicate Core package class definitions in final native run | None reported |
+| Artifact retention | Build/host/test logs and xcresult retained in the linked run for 14 days |
+| Production feature branch | Still `cb4f6b1821489a27b06a36e378b0a7e5267bcbf1` |
+| Main branch | Still `548b33245198eaae165c094c9c68fe333cb69c05` |
+
+The native cases verify cancellation/stale presentation, duplicate callback rejection, atomic native-limit rejection/retry, queued-favorite protection, repeated review/Continue preserving one new-entry identifier, and edited values without storage or delivery side effects. The original tests remain in place.
+
+Earlier attempts exposed an async XCTest fixture assertion error and unsigned full-app startup's Siri entitlement requirement. The assertions were corrected, and the final native run uses the minimal host described above, without linking a second Core package copy into the test bundle. The final run passed without changing normal application startup or signing.
+
+Documentation-only commits after the validated code commit do not change the tested implementation. Passing CI is engineering evidence, not independent safety validation.
+
+## Unresolved limitations and independent validation still required
+
+No unresolved compiler errors or failing automated tests remain in the recorded run. Full application startup, live camera/gallery interactions, real provider responses and clinical behavior have **not** been validated by these mock adapter tests. The native test class requires the workflow's generated host fixture; run it through the migration validation workflow, rather than the normal unprepared LoopTests scheme. Production signing/backend configuration was preserved, and no physical app, TestFlight release or deployment was changed.
+
+The following checks remain:
 
 - Human review of upstream changes and the adapter, especially carbohydrate quantities, units, absorption timing, notes, entry identity and normal Continue/save behavior.
 - Camera/gallery first presentation, cancellation while loading/analyzing, backgrounding, retries and network failures on the intended iOS version.
