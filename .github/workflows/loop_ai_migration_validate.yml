@@ -3,6 +3,12 @@ on:
   push:
     branches: ['migration/loop4-ai-photo']
   workflow_dispatch:
+    inputs:
+      prepare_signed_candidate:
+        type: boolean
+        description: Archive a candidate for a spare test device using existing signing; never upload or install
+        required: true
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -19,24 +25,10 @@ jobs:
           persist-credentials: false
           submodules: recursive
           fetch-depth: 0
-      - name: Select installed Xcode 26 or newer
+      - name: Select pinned Xcode 26.3
         run: |
-          python3 - <<'PY'
-          import re, subprocess
-          from pathlib import Path
-          candidates = []
-          for app in Path('/Applications').glob('Xcode_*.app'):
-              match = re.fullmatch(r'Xcode_(\d+)(?:\.(\d+))?(?:\.(\d+))?\.app', app.name)
-              if match:
-                  version = tuple(int(part or 0) for part in match.groups())
-                  if version[0] >= 26:
-                      candidates.append((version, app))
-          if not candidates:
-              raise SystemExit('Xcode 26 or newer is required.')
-          _, app = max(candidates)
-          subprocess.run(['sudo', 'xcode-select', '--switch', str(app / 'Contents/Developer')], check=True)
-          subprocess.run(['xcodebuild', '-version'], check=True)
-          PY
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
       - name: Verify pinned sources and protected production configuration
         run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
       - name: Run Swift review regression tests
@@ -52,6 +44,10 @@ jobs:
           npm test
       - name: Install pinned project tools
         run: bundle install
+      - name: Check validation and candidate tooling syntax
+        run: |
+          python3 -m py_compile Prototypes/AIFoodRecognition/Integration/probe_simulator_startup.py
+          ruby -c Prototypes/AIFoodRecognition/Integration/experimental_archive/fastlane/Fastfile
       - name: Port and link the reviewed-input UI
         run: |
           python3 Prototypes/AIFoodRecognition/Integration/apply.py
@@ -69,6 +65,18 @@ jobs:
               exit 1
             }
           tail -n 12 "$RUNNER_TEMP/LoopMigrationBuild.log"
+      - name: Probe normal application startup in a disposable Simulator
+        id: startup
+        continue-on-error: true
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/probe_simulator_startup.py \
+            --app "$RUNNER_TEMP/LoopMigration/Build/Products/Debug-iphonesimulator/Loop.app" \
+            --output "$RUNNER_TEMP/LoopMigrationStartup" \
+            > "$RUNNER_TEMP/LoopMigrationStartup.log" 2>&1 || {
+              cat "$RUNNER_TEMP/LoopMigrationStartup.log"
+              exit 1
+            }
+          cat "$RUNNER_TEMP/LoopMigrationStartup.log"
       - name: Prepare isolated unsigned native adapter test host
         run: bundle exec ruby Prototypes/AIFoodRecognition/Integration/prepare_test_host.rb
       - name: Run native adapter regression tests on Simulator
@@ -103,5 +111,89 @@ jobs:
             ${{ runner.temp }}/LoopMigrationBuild.log
             ${{ runner.temp }}/LoopMigrationTests.log
             ${{ runner.temp }}/LoopMigrationTestHost.log
+            ${{ runner.temp }}/LoopMigrationStartup.log
+            ${{ runner.temp }}/LoopMigrationStartup
             ${{ runner.temp }}/MealPhotoMigration.xcresult
           retention-days: 14
+      - name: Require normal startup as well as adapter tests
+        if: always()
+        env:
+          STARTUP_OUTCOME: ${{ steps.startup.outcome }}
+        run: |
+          test "$STARTUP_OUTCOME" = success
+  archive_candidate:
+    name: Archive candidate for a spare test device only
+    if: github.ref == 'refs/heads/migration/loop4-ai-photo' && github.event_name == 'workflow_dispatch' && inputs.prepare_signed_candidate
+    needs: validate
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Select the validated Xcode version
+        run: sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+      - name: Verify protected configuration and source pins
+        run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - name: Install pinned project tools
+        run: bundle install
+      - name: Apply the native adapter to the normal app
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme.py
+      - name: Preconfigure the existing personal tester login
+        env:
+          FOOD_TESTER_ACCESS_CODE: ${{ secrets.FOOD_TESTER_ACCESS_CODE }}
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review.py
+          --plist Loop/Loop/Info.plist
+      - name: Archive without changing provisioning or publishing
+        working-directory: Prototypes/AIFoodRecognition/Integration/experimental_archive
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          TEAMID: ${{ secrets.TEAMID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_READONLY: 'true'
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+          MIGRATION_CANDIDATE_SHA: ${{ github.sha }}
+        run: bundle exec fastlane ios archive_candidate
+      - name: Record candidate provenance
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, plistlib, subprocess, zipfile
+          from pathlib import Path
+          ipa = Path('Loop.ipa')
+          with zipfile.ZipFile(ipa) as archive:
+              info = plistlib.loads(archive.read('Payload/Loop.app/Info.plist'))
+          record = {
+              'source': os.environ['CANDIDATE_SHA'],
+              'ipa_sha256': hashlib.file_digest(ipa.open('rb'), 'sha256').hexdigest(),
+              'bundle': info['CFBundleIdentifier'],
+              'version': info['CFBundleShortVersionString'],
+              'build': info['CFBundleVersion'],
+              'app_group': info['AppGroupIdentifier'],
+              'minimum_ios': info['MinimumOSVersion'],
+              'xcode': subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
+              'restriction': 'Experimental. Existing production app identity: spare test device only. Not uploaded or approved for therapy.'
+          }
+          Path('MigrationCandidate.json').write_text(json.dumps(record, indent=2) + '\n')
+          PY
+      - name: Retain the experimental archive for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: experimental-loop-candidate-${{ github.sha }}
+          path: |
+            Loop.ipa
+            MigrationCandidate.json
+          if-no-files-found: error
+          retention-days: 7
