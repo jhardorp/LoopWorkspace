@@ -10,6 +10,8 @@ The follow-up CI startup probe copies the normal Simulator app into a temporary 
 
 No independent clinical or safety validation has been performed. The authoring assistant's source review and automated tests cannot provide that independence.
 
+The follow-up workflow uses the supported `macos-26` Arm64 runner and explicitly selects Xcode 26.3 (17C529), which is listed in the [official runner image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md). The macOS 15 retry was cancelled before receiving a runner; no app code or dependency pin changed for this host fallback. Record the actual run outcome before claiming validation on this host.
+
 ## Source review completed by the authoring assistant
 
 - The native overlay changes only the carbohydrate view/model, display of the entry on the bolus screen, and mock tests. The protected-file verifier guards the production signing, upload, backend and distribution configuration. Exact upstream gitlinks and remote Swift package revisions remain pinned.
