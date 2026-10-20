@@ -254,12 +254,13 @@ diff --git a/LoopTests/ViewModels/BolusEntryViewModelTests.swift b/LoopTests/Vie
 index dd26c27..9295e2d 100644
 --- a/LoopTests/ViewModels/BolusEntryViewModelTests.swift
 +++ b/LoopTests/ViewModels/BolusEntryViewModelTests.swift
-@@ -1070,3 +1070,127 @@ extension StoredGlucoseSample {
+@@ -1070,3 +1070,129 @@ extension StoredGlucoseSample {
          StoredGlucoseSample(startDate: date, quantity: .glucose(value: value))
      }
  }
 +
 +// Experimental photo adapter regression tests. All storage and delivery delegates are mocks.
++#if MEAL_PHOTO_ADAPTER_TEST_HOST
 +@MainActor
 +final class MealPhotoMigrationTests: XCTestCase {
 +    private final class Delegate: MockBolusEntryViewModelDelegate, CarbEntryViewModelDelegate {
@@ -382,3 +383,4 @@ index dd26c27..9295e2d 100644
 +    }
 +
 +}
++#endif

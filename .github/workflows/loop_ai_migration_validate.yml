@@ -102,6 +102,14 @@ jobs:
               exit 1
             }
           tail -n 30 "$RUNNER_TEMP/LoopMigrationTests.log"
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          log = (Path(os.environ['RUNNER_TEMP']) / 'LoopMigrationTests.log').read_text()
+          passed = set(re.findall(r"MealPhotoMigrationTests (test\w+)\]' passed", log))
+          if len(passed) != 6:
+              raise SystemExit(f'Expected six native adapter cases; found {len(passed)}. Refusing an empty test run.')
+          PY
       - name: Retain validation logs and test results
         if: always()
         uses: actions/upload-artifact@v4

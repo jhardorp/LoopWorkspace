@@ -14,4 +14,13 @@ plist = File.join(loop_dir, 'Loop/Info.plist')
 settings = Xcodeproj::Plist.read_from_path(plist)
 abort('Expected upstream scene manifest') unless settings.delete('UIApplicationSceneManifest')
 Xcodeproj::Plist.write_to_path(settings, plist)
+project = Xcodeproj::Project.open(File.join(loop_dir, 'Loop.xcodeproj'))
+tests = project.targets.find { |target| target.name == 'LoopTests' }
+abort('Native test target was not found') unless tests
+tests.build_configurations.each do |config|
+  conditions = Array(config.build_settings.fetch('SWIFT_ACTIVE_COMPILATION_CONDITIONS', '$(inherited)'))
+  conditions << 'MEAL_PHOTO_ADAPTER_TEST_HOST'
+  config.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = conditions.join(' ')
+end
+project.save
 puts 'Prepared a minimal unsigned test host; LoopAppManager, Siri and device services are not started.'
