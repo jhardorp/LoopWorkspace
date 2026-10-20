@@ -113,7 +113,7 @@ index ef658d7..f178338 100644
      }
  
 diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
-index 0411899..000bf9e 100644
+index 0411899..c42acca 100644
 --- a/Loop/Views/CarbEntryView.swift
 +++ b/Loop/Views/CarbEntryView.swift
 @@ -9,6 +9,7 @@
@@ -164,7 +164,7 @@ index 0411899..000bf9e 100644
              CardSectionDivider()
              
 -            FoodTypeRow(selectedFavoriteFood: selectedFavoriteFoodBinding, foodType: $viewModel.foodType, absorptionTime: $viewModel.absorptionTime, selectedDefaultAbsorptionTimeEmoji: $viewModel.selectedDefaultAbsorptionTimeEmoji, usesCustomFoodType: $viewModel.usesCustomFoodType, absorptionTimeWasEdited: $viewModel.absorptionTimeWasEdited, isFocused: foodTypeFocused, showClearFavoriteFoodButton: !isNewEntry, defaultAbsorptionTimes: viewModel.defaultAbsorptionTimes)
-+            if viewModel.usesCustomFoodType && (usesFoodDescriptionEditor || viewModel.foodType.contains(where: { $0.isLetter || $0.isNumber })) {
++            if viewModel.selectedFavoriteFood == nil && viewModel.usesCustomFoodType && (usesFoodDescriptionEditor || viewModel.foodType.contains(where: { $0.isLetter || $0.isNumber })) {
 +                foodDescriptionRow
 +            } else {
 +                FoodTypeRow(selectedFavoriteFood: selectedFavoriteFoodBinding, foodType: $viewModel.foodType, absorptionTime: $viewModel.absorptionTime, selectedDefaultAbsorptionTimeEmoji: $viewModel.selectedDefaultAbsorptionTimeEmoji, usesCustomFoodType: $viewModel.usesCustomFoodType, absorptionTimeWasEdited: $viewModel.absorptionTimeWasEdited, isFocused: foodTypeFocused, showClearFavoriteFoodButton: !isNewEntry, defaultAbsorptionTimes: viewModel.defaultAbsorptionTimes)
@@ -251,7 +251,7 @@ index 0411899..000bf9e 100644
  
  // MARK: - Warnings & Alerts
 diff --git a/LoopTests/ViewModels/BolusEntryViewModelTests.swift b/LoopTests/ViewModels/BolusEntryViewModelTests.swift
-index dd26c27..d937318 100644
+index dd26c27..e93bfd1 100644
 --- a/LoopTests/ViewModels/BolusEntryViewModelTests.swift
 +++ b/LoopTests/ViewModels/BolusEntryViewModelTests.swift
 @@ -12,6 +12,7 @@ import LoopKit
@@ -262,7 +262,7 @@ index dd26c27..d937318 100644
  import LoopAlgorithm
  
  @testable import Loop
-@@ -1070,3 +1071,112 @@ extension StoredGlucoseSample {
+@@ -1070,3 +1071,134 @@ extension StoredGlucoseSample {
          StoredGlucoseSample(startDate: date, quantity: .glucose(value: value))
      }
  }
@@ -374,4 +374,26 @@ index dd26c27..d937318 100644
 +        XCTAssertNil(vm.bolusViewModel)
 +        XCTAssertTrue(delegate.carbEntriesAdded.isEmpty)
 +    }
++    func testRepeatedReviewAndContinueKeepOneNewEntryIdentity() async throws {
++        let delegate = Delegate()
++        let vm = CarbEntryViewModel(delegate: delegate)
++        let reviewed = try await meal()
++        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: vm.beginPhotoReview()))
++        vm.continueToBolus()
++        for _ in 0..<100 where vm.bolusViewModel == nil { try await Task.sleep(nanoseconds: 10_000_000) }
++        let first = try XCTUnwrap(vm.bolusViewModel?.carbEntryChange)
++        guard case .add(let firstEntry) = first else { return XCTFail("Expected new entry") }
++        vm.bolusViewModel = nil
++        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: vm.beginPhotoReview()))
++        vm.carbsQuantity = 20
++        vm.continueToBolus()
++        for _ in 0..<100 where vm.bolusViewModel == nil { try await Task.sleep(nanoseconds: 10_000_000) }
++        let second = try XCTUnwrap(vm.bolusViewModel?.carbEntryChange)
++        guard case .add(let secondEntry) = second else { return XCTFail("Expected new entry") }
++        XCTAssertEqual(firstEntry.syncIdentifier, secondEntry.syncIdentifier)
++        XCTAssertEqual(secondEntry.quantity.doubleValue(for: .gram), 20)
++        XCTAssertTrue(delegate.carbEntriesAdded.isEmpty)
++        XCTAssertNil(delegate.enactedBolusUnits)
++    }
++
 +}

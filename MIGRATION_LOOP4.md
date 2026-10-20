@@ -11,7 +11,7 @@ No clinical use or insulin delivery from this migration until independently vali
 - Workspace marketing version: **3.15.2 (58)**, minimum iOS **17.6**. “loop4” is the migration branch name, not an upstream version claim.
 - The newer Loop-only head `bbede6cbe22967069703fc18a1508a5193e02c14` removes support-report UI. It is not yet pinned by this workspace. This migration uses the latest published workspace dependency combination rather than mixing independent branch tips.
 
-`Integration/upstream-lock.json` records every gitlink. Workspace `Package.resolved` pins remote Swift dependencies; local algorithm/device packages use those gitlinks. Gemfile/lock, signing files, deployment workflows, personal plist configurator, backend, and production upload request are preserved from production. Workspace references, scheme, Swift resolution lock and version file come from the selected upstream workspace. `apply.py` rejects any other Loop source pin.
+`Integration/upstream-lock.json` records every gitlink. Workspace `Package.resolved` pins remote Swift dependencies; local algorithm/device packages use those gitlinks. Xcode is restricted to remote package versions in the resolved file. Gemfile/lock, signing files, deployment workflows, personal plist configurator, backend, and production upload request are preserved from production. Workspace references, scheme, Swift resolution lock and version file come from the selected upstream workspace. `apply.py` rejects any other Loop source pin.
 
 | Dependency | Production pin | Migration pin |
 |---|---|---|
@@ -55,7 +55,7 @@ Upgrading upstream necessarily incorporates upstream changes to those components
 | AI analysis / backend | JPEG analysis and comment refinement | Same protocol, provider settings and backend source |
 | Review | Editable grams, absorption minutes, notes; confidence warnings and explicit Use in Loop | Same shared UI and confirmation; native limits also checked |
 | Handoff | Review session prevents repeated completion | Session protection plus host presentation token prevents duplicate, cancelled and stale callbacks |
-| Native entry | Fills editable fields; preserves entry time; does not save or advance | Preserved; native favorites observer is cancelled before transfer so queued selection cannot overwrite it |
+| Native entry | Fills editable fields; preserves entry time; does not save or advance | Preserved; native favorites observer is cancelled before transfer so queued selection cannot overwrite it; upstream favorite chips/clear actions remain available |
 | Long food names | Full-width multiline editor and separate summary lines | Ported to the new editor and CarbEntryChange-based summary |
 | Submission | Normal Loop Continue / save flow | Entirely upstream; no automatic entry storage or bolus navigation |
 | Credentials | Personal release injects tester code into signed plist | No injection or signing during validation; production setup remains unchanged |
@@ -70,7 +70,7 @@ A cancelled photo review never modifies the existing carb fields. Successful lat
 2. Swift package regression tests: duplicate/reentrant handoff, cancellation, superseded presentations, native limits, locale values, refinement, confidence acknowledgement, failed/rejected transfer and retries.
 3. Unchanged backend syntax and contract tests without real provider requests.
 4. Full integrated iOS Simulator build with signing disabled.
-5. Mock-only native adapter tests covering no save/no bolus side effects, edits, duplicate callbacks, cancellation, stale callbacks, queued favorites, unit conversion and atomic native-limit rejection.
+5. Mock-only native adapter tests covering no save/no bolus side effects, edits, duplicate callbacks, cancellation, stale callbacks, queued favorites, unit conversion atomic native-limit rejection, and one stable new-entry sync identifier across repeated reviews/Continue.
 
 CI build/test results are recorded below after execution. Passing CI is engineering evidence, not independent safety validation.
 
