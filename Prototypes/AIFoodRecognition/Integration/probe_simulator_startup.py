@@ -19,6 +19,12 @@ def run(*args, timeout=120):
     except subprocess.CalledProcessError as error:
         print(error.output[-16000:], file=sys.stderr)
         raise
+    except subprocess.TimeoutExpired as error:
+        partial = error.output or b""
+        if isinstance(partial, bytes):
+            partial = partial.decode(errors="replace")
+        print(partial[-16000:], file=sys.stderr)
+        raise
 
 
 def main():
@@ -70,17 +76,22 @@ def probe(app, info, output, loop):
     supported = {d["identifier"] if isinstance(d, dict) else d for d in runtime.get("supportedDeviceTypes", [])}
     device_type = next(d for d in catalog["devicetypes"] if d["name"].startswith("iPhone") and (not supported or d["identifier"] in supported))
     device = run("xcrun", "simctl", "create", "Loop AI migration startup", device_type["identifier"], runtime["identifier"]).strip()
-    report = {"bundle": bundle, "runtime": runtime["version"], "device": device, "status": "failed", "scope": "Normal app launch only; onboarding, live photos, provider requests and therapy behavior are not validated."}
+    report = {"bundle": bundle, "runtime": runtime["version"], "device": device, "status": "failed", "phase": "boot", "scope": "Normal app launch only; onboarding, live photos, provider requests and therapy behavior are not validated."}
     try:
         run("xcrun", "simctl", "boot", device)
         run("xcrun", "simctl", "bootstatus", device, "-b", timeout=180)
-        run("xcrun", "simctl", "install", device, str(app))
+        # A full Loop bundle includes all pinned plugins and companion bundles.
+        # Installation on a freshly booted CI Simulator can exceed two minutes.
+        report["phase"] = "install"
+        run("xcrun", "simctl", "install", device, str(app), timeout=600)
+        report["phase"] = "launch"
         launched = run("xcrun", "simctl", "launch", "--terminate-running-process", device, bundle)
         (output / "launch.txt").write_text(launched)
         match = re.search(r":\s*(\d+)\s*$", launched)
         if not match:
             raise RuntimeError("simctl did not return the launched app PID.")
         pid = match.group(1)
+        report["phase"] = "process-survival"
         for _ in range(3):
             time.sleep(5)
             command = run("ps", "-p", pid, "-o", "command=").strip()
@@ -88,14 +99,24 @@ def probe(app, info, output, loop):
                 raise RuntimeError("The normal app did not remain running.")
         run("xcrun", "simctl", "io", device, "screenshot", str(output / "startup.png"))
         report["status"] = "passed"
+        report["phase"] = "complete"
         print(f"Normal Loop startup stayed running for 15 seconds on iOS {runtime['version']}. Screenshot retained. This is not end-to-end validation.")
+    except Exception as error:
+        report["error"] = str(error)
+        raise
     finally:
+        # Diagnostics and cleanup must not hide the original measurement failure.
+        try:
+            logs = subprocess.run(["xcrun", "simctl", "spawn", device, "log", "show", "--last", "5m", "--style", "compact", "--predicate", 'process == "Loop" OR process == "installd" OR process == "containermanagerd"'], capture_output=True, text=True, timeout=30)
+            (output / "application.log").write_text((logs.stdout + logs.stderr)[-200000:])
+        except subprocess.TimeoutExpired:
+            report["diagnostics_timeout"] = True
+        for command in [("terminate", device, bundle), ("shutdown", device), ("delete", device)]:
+            try:
+                subprocess.run(["xcrun", "simctl", *command], capture_output=True, timeout=30)
+            except subprocess.TimeoutExpired:
+                report.setdefault("cleanup_timeouts", []).append(command[0])
         (output / "result.json").write_text(json.dumps(report, indent=2) + "\n")
-        logs = subprocess.run(["xcrun", "simctl", "spawn", device, "log", "show", "--last", "2m", "--style", "compact", "--predicate", 'process == "Loop"'], capture_output=True, text=True, timeout=30)
-        (output / "application.log").write_text(logs.stdout + logs.stderr)
-        subprocess.run(["xcrun", "simctl", "terminate", device, bundle], capture_output=True, timeout=30)
-        subprocess.run(["xcrun", "simctl", "shutdown", device], capture_output=True, timeout=30)
-        subprocess.run(["xcrun", "simctl", "delete", device], capture_output=True, timeout=30)
 
 
 if __name__ == "__main__":
