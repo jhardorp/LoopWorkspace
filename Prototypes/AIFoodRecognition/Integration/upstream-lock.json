@@ -1,0 +1,30 @@
+{
+  "workspace": "53253aaa774a95ea6e299cc1a2fabc4af861328c",
+  "production": "cb4f6b1821489a27b06a36e378b0a7e5267bcbf1",
+  "submodules": {
+    "AmplitudeService": "5451d96d7fd9d9c34f0277b4bd0b51afa04408b7",
+    "CGMBLEKit": "7fb23093b459880eebd7cd657be7d97a7e188bd4",
+    "EversenseKit": "fb23eef40ebe2bf5e59bfe27416567446b9b6d2c",
+    "G7SensorKit": "e17129d05fb9d8c05626f63f1bebf59d39c67711",
+    "LibreLoop": "8c40f53d70ea686cce9374e083c7550328b7f48b",
+    "LibreTransmitter": "dde20cd6b4f3c3537fc1fbeeacde45dc8411a778",
+    "LogglyService": "02ec0cc310d3c229cc4372edee5e8112dc0f33e9",
+    "Loop": "b55744981c2e589799754d19f73b8912c8809e12",
+    "LoopAlgorithm": "7ef67243adb0445f5138083c30908a4745eafc83",
+    "LoopKit": "031c16f574efaf73255b398d48479b19cd8d45b0",
+    "LoopOnboarding": "c7a0b9270e733ddb8d085ad41f2ce0683d113195",
+    "LoopSupport": "63fa9f8de0974ca241c43dc4ae9870424a6b181b",
+    "MedtrumKit": "f01a84de5a55d2a65cb0a59611aff1c56c7ee647",
+    "MinimedKit": "6f8207e14baeb930d1c1a842558fc5d03c832d9a",
+    "Minizip": "66483b42479a86d095ec642b2f6819e1abbe30d3",
+    "MixpanelService": "8e9efe277a79eee022dfd3d7af80982266b8b919",
+    "NightscoutRemoteCGM": "4cb3e6d2897908c51bc8ab89160ce8efe9a7b045",
+    "NightscoutService": "25115e9490eec5c2b774ebf40115256d6d6ec68e",
+    "OmnipodKit": "c21a0774fb59f54d2adc0db6f58b37ab9f339b32",
+    "RileyLinkKit": "777e7efc0b0b16a59bf5cec7ba49d02ea7e9120a",
+    "RoundWhiteDiscKit": "e66da6cc34680fecbbb87812279163dcc1a842b4",
+    "TidepoolService": "46171f37bfdcafc4600fb2af19e0f2a1bfa6ce1e",
+    "TrueTime.swift": "5dc1285f3ea85fed3d132fb226c969d6a06b1208",
+    "dexcom-share-client-swift": "506df57f2c1107c85ca841e6fdba6f27da54c25f"
+  }
+}

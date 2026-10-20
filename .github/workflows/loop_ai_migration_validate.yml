@@ -1,0 +1,96 @@
+name: Experimental Loop AI migration validation
+on:
+  push:
+    branches: ['migration/loop4-ai-photo']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: loop-ai-migration-validation
+  cancel-in-progress: true
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/migration/loop4-ai-photo'
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Select installed Xcode 26 or newer
+        run: |
+          python3 - <<'PY'
+          import re, subprocess
+          from pathlib import Path
+          candidates = []
+          for app in Path('/Applications').glob('Xcode_*.app'):
+              match = re.fullmatch(r'Xcode_(\d+)(?:\.(\d+))?(?:\.(\d+))?\.app', app.name)
+              if match:
+                  version = tuple(int(part or 0) for part in match.groups())
+                  if version[0] >= 26:
+                      candidates.append((version, app))
+          if not candidates:
+              raise SystemExit('Xcode 26 or newer is required.')
+          _, app = max(candidates)
+          subprocess.run(['sudo', 'xcode-select', '--switch', str(app / 'Contents/Developer')], check=True)
+          subprocess.run(['xcodebuild', '-version'], check=True)
+          PY
+      - name: Verify pinned sources and protected production configuration
+        run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - name: Run Swift review regression tests
+        run: swift test --package-path Prototypes/AIFoodRecognition
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test unchanged backend contract without deploying
+        working-directory: Prototypes/AIFoodRecognition/Backend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+          npm test
+      - name: Install pinned project tools
+        run: bundle install
+      - name: Port and link the reviewed-input UI
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme.py
+      - name: Build integrated app for iOS Simulator unsigned
+        run: |
+          set -o pipefail
+          xcodebuild -workspace LoopWorkspace.xcworkspace -scheme LoopWorkspace \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/LoopMigration" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build \
+            > "$RUNNER_TEMP/LoopMigrationBuild.log" 2>&1 || {
+              tail -n 180 "$RUNNER_TEMP/LoopMigrationBuild.log"
+              exit 1
+            }
+          tail -n 12 "$RUNNER_TEMP/LoopMigrationBuild.log"
+      - name: Run native adapter regression tests on Simulator
+        run: |
+          set -o pipefail
+          device=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')
+          xcodebuild -workspace LoopWorkspace.xcworkspace -scheme LoopTests \
+            -destination "platform=iOS Simulator,id=$device" \
+            -derivedDataPath "$RUNNER_TEMP/LoopMigration" \
+            -resultBundlePath "$RUNNER_TEMP/MealPhotoMigration.xcresult" \
+            -only-testing:LoopTests/MealPhotoMigrationTests \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test \
+            > "$RUNNER_TEMP/LoopMigrationTests.log" 2>&1 || {
+              tail -n 180 "$RUNNER_TEMP/LoopMigrationTests.log"
+              exit 1
+            }
+          tail -n 30 "$RUNNER_TEMP/LoopMigrationTests.log"
+      - name: Retain validation logs and test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: experimental-loop-ai-validation-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/LoopMigrationBuild.log
+            ${{ runner.temp }}/LoopMigrationTests.log
+            ${{ runner.temp }}/MealPhotoMigration.xcresult
+          retention-days: 14

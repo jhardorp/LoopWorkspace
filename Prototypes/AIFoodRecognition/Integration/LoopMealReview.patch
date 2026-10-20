@@ -1,66 +1,173 @@
+diff --git a/Loop/View Models/CarbEntryViewModel.swift b/Loop/View Models/CarbEntryViewModel.swift
+index 719a2da..20df288 100644
+--- a/Loop/View Models/CarbEntryViewModel.swift	
++++ b/Loop/View Models/CarbEntryViewModel.swift	
+@@ -9,6 +9,7 @@
+ import SwiftUI
+ import LoopKit
+ import Combine
++import FoodRecognitionCore
+ import LoopCore
+ import LoopAlgorithm
+ import os.log
+@@ -109,6 +110,8 @@ final class CarbEntryViewModel: ObservableObject {
+     weak var deliveryDelegate: DeliveryDelegate?
+ 
+     private lazy var cancellables = Set<AnyCancellable>()
++    private var favoriteFoodIndexObserver: AnyCancellable?
++    private let photoReviewHandoff = MealReviewHandoff()
+     
+     /// Initalizer for when`CarbEntryView` is presented from the home screen
+     init(delegate: CarbEntryViewModelDelegate) {
+@@ -255,6 +258,29 @@ final class CarbEntryViewModel: ObservableObject {
+         }
+     }
+     
++    // MARK: - Reviewed photo input (editable only; never saves or advances)
++    func beginPhotoReview() -> UUID { photoReviewHandoff.begin() }
++    func cancelPhotoReview() { photoReviewHandoff.cancel() }
++
++    @discardableResult
++    func applyPhotoReview(_ meal: ReviewedMeal, request: UUID) -> Bool {
++        guard originalCarbEntry == nil else { return false }
++        return photoReviewHandoff.accept(meal, request: request,
++            maximumCarbohydrateGrams: maxCarbEntryQuantity.doubleValue(for: .gram),
++            absorptionSeconds: absorptionRimesRange) { reviewed in
++                // Cancel queued favorite selection before clearing it; it must not overwrite the review.
++                favoriteFoodIndexObserver?.cancel()
++                selectedFavoriteFoodIndex = -1
++                selectedDefaultAbsorptionTimeEmoji = ""
++                carbsQuantity = LoopQuantity(unit: .gram, doubleValue: reviewed.carbohydrateGrams).doubleValue(for: preferredCarbUnit)
++                foodType = reviewed.foodDescription
++                usesCustomFoodType = true
++                absorptionTime = reviewed.absorptionMinutes * 60
++                absorptionTimeWasEdited = true
++                observeFavoriteFoodIndexChange()
++            }
++    }
++
+     // MARK: - Favorite Foods
+     func onFavoriteFoodSave(_ food: NewFavoriteFood) {
+         let newStoredFood = StoredFavoriteFood(name: food.name, carbsQuantity: food.carbsQuantity, foodType: food.foodType, absorptionTime: food.absorptionTime)
+@@ -263,13 +289,12 @@ final class CarbEntryViewModel: ObservableObject {
+     }
+     
+     private func observeFavoriteFoodIndexChange() {
+-        $selectedFavoriteFoodIndex
++        favoriteFoodIndexObserver = $selectedFavoriteFoodIndex
+             .receive(on: RunLoop.main)
+             .dropFirst()
+             .sink { [weak self] index in
+                 self?.favoriteFoodSelected(at: index)
+             }
+-            .store(in: &cancellables)
+     }
+     
+     private func observeFavoriteFoodChange() {
+diff --git a/Loop/Views/BolusEntryView.swift b/Loop/Views/BolusEntryView.swift
+index ef658d7..f178338 100644
+--- a/Loop/Views/BolusEntryView.swift
++++ b/Loop/Views/BolusEntryView.swift
+@@ -239,19 +239,33 @@ struct BolusEntryView: View {
+ 
+     @ViewBuilder
+     private var potentialCarbEntryRow: some View {
+-        if viewModel.carbEntryAmountAndEmojiString != nil && viewModel.carbEntryDateAndAbsorptionTimeString != nil {
+-            HStack {
+-                Text("Carb Entry", comment: "Label for carb entry row on bolus screen")
+-
+-                Text(viewModel.carbEntryAmountAndEmojiString!)
+-                    .foregroundColor(Color(.carbTintColor))
+-                    .modifier(LabelBackground())
++        if let entry = viewModel.carbEntryChange,
++           let amount = QuantityFormatter(for: .gram).string(from: entry.quantity),
++           let time = viewModel.carbEntryDateAndAbsorptionTimeString {
++            VStack(alignment: .leading, spacing: 6) {
++                HStack(alignment: .firstTextBaseline) {
++                    Text("Carb Entry", comment: "Label for carb entry row on bolus screen")
++                    Spacer(minLength: 8)
++                    Text(verbatim: amount)
++                        .foregroundColor(Color(.carbTintColor))
++                        .modifier(LabelBackground())
++                }
+ 
+-                Spacer()
++                Text(verbatim: time)
++                    .font(.subheadline)
++                    .fixedSize(horizontal: false, vertical: true)
+ 
+-                Text(viewModel.carbEntryDateAndAbsorptionTimeString!)
+-                    .foregroundColor(Color(.secondaryLabel))
++                if let food = entry.foodType ?? viewModel.selectedCarbAbsorptionTimeEmoji, !food.isEmpty {
++                    Text(verbatim: food)
++                        .foregroundColor(Color(.carbTintColor))
++                        .lineLimit(nil)
++                        .multilineTextAlignment(.leading)
++                        .fixedSize(horizontal: false, vertical: true)
++                        .frame(maxWidth: .infinity, alignment: .leading)
++                }
+             }
++            .frame(maxWidth: .infinity, alignment: .leading)
++            .accessibilityElement(children: .combine)
+         }
+     }
+ 
 diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
+index 0411899..000bf9e 100644
 --- a/Loop/Views/CarbEntryView.swift
 +++ b/Loop/Views/CarbEntryView.swift
-@@ -10,6 +10,7 @@
+@@ -9,6 +9,7 @@
+ import SwiftUI
  import LoopKit
  import LoopKitUI
- import HealthKit
 +import FoodRecognitionUI
  
  struct CarbEntryView: View, HorizontalSizeClassOverride {
      @EnvironmentObject private var displayGlucosePreference: DisplayGlucosePreference
-@@ -21,7 +22,15 @@
-     
-     @State private var showHowAbsorptionTimeWorks = false
+@@ -23,6 +24,16 @@ struct CarbEntryView: View, HorizontalSizeClassOverride {
      @State private var showAddFavoriteFood = false
--    
+     @State private var showFavoriteFoodInsights = false
+     
 +    @State private var mealReviewSource: MealReviewSource?
 +    @FocusState private var foodDescriptionFocused: Bool
 +    @State private var usesFoodDescriptionEditor = false
 +
-+    private enum MealReviewSource: String, Identifiable {
-+        case camera, photoLibrary
-+        var id: String { rawValue }
++    private struct MealReviewSource: Identifiable {
++        enum Kind { case camera, photoLibrary }
++        let id: UUID
++        let kind: Kind
 +    }
 +
      private let isNewEntry: Bool
  
      init(viewModel: CarbEntryViewModel) {
-@@ -87,8 +96,25 @@
+@@ -105,6 +116,17 @@ struct CarbEntryView: View, HorizontalSizeClassOverride {
              }
          }
          .alert(item: $viewModel.alert, content: alert(for:))
-+        .onChange(of: expandedRow) { row in
-+            if row != .foodType {
-+                foodDescriptionFocused = false
++        .onChange(of: expandedRow) { _, row in
++            if row != .foodType { foodDescriptionFocused = false }
++        }
++        .sheet(item: $mealReviewSource, onDismiss: viewModel.cancelPhotoReview) { source in
++            FoodRecognitionView(startsWithCamera: source.kind == .camera, startsWithPhotoLibrary: source.kind == .photoLibrary) { meal in
++                guard viewModel.applyPhotoReview(meal, request: source.id) else { return false }
++                mealReviewSource = nil
++                clearExpandedRow()
++                return true
 +            }
 +        }
          .sheet(isPresented: $showAddFavoriteFood, onDismiss: clearExpandedRow) {
-             AddEditFavoriteFoodView(carbsQuantity: $viewModel.carbsQuantity.wrappedValue, foodType: $viewModel.foodType.wrappedValue, absorptionTime: $viewModel.absorptionTime.wrappedValue, onSave: onFavoriteFoodSave(_:))
-+        }
-+        .sheet(item: $mealReviewSource) { source in
-+            FoodRecognitionView(startsWithCamera: source == .camera, startsWithPhotoLibrary: source == .photoLibrary) { meal in
-+                if viewModel.applyPhotoReview(carbohydrateGrams: meal.carbohydrateGrams,
-+                                             absorptionMinutes: meal.absorptionMinutes,
-+                                             foodDescription: meal.foodDescription) {
-+                    mealReviewSource = nil
-+                    clearExpandedRow()
-+                    return true
-+                }
-+                return false
-+            }
+             FavoriteFoodAddEditView(carbsQuantity: $viewModel.carbsQuantity.wrappedValue, foodType: $viewModel.foodType.wrappedValue, absorptionTime: $viewModel.absorptionTime.wrappedValue, onSave: onFavoriteFoodSave(_:))
          }
-         .sheet(isPresented: $showHowAbsorptionTimeWorks) {
-             HowAbsorptionTimeWorksView()
-@@ -110,12 +136,35 @@
+@@ -141,12 +163,35 @@ struct CarbEntryView: View, HorizontalSizeClassOverride {
              
              CardSectionDivider()
              
--            FoodTypeRow(foodType: $viewModel.foodType, absorptionTime: $viewModel.absorptionTime, selectedDefaultAbsorptionTimeEmoji: $viewModel.selectedDefaultAbsorptionTimeEmoji, usesCustomFoodType: $viewModel.usesCustomFoodType, absorptionTimeWasEdited: $viewModel.absorptionTimeWasEdited, isFocused: foodTypeFocused, defaultAbsorptionTimes: viewModel.defaultAbsorptionTimes)
+-            FoodTypeRow(selectedFavoriteFood: selectedFavoriteFoodBinding, foodType: $viewModel.foodType, absorptionTime: $viewModel.absorptionTime, selectedDefaultAbsorptionTimeEmoji: $viewModel.selectedDefaultAbsorptionTimeEmoji, usesCustomFoodType: $viewModel.usesCustomFoodType, absorptionTimeWasEdited: $viewModel.absorptionTimeWasEdited, isFocused: foodTypeFocused, showClearFavoriteFoodButton: !isNewEntry, defaultAbsorptionTimes: viewModel.defaultAbsorptionTimes)
 +            if viewModel.usesCustomFoodType && (usesFoodDescriptionEditor || viewModel.foodType.contains(where: { $0.isLetter || $0.isNumber })) {
 +                foodDescriptionRow
 +            } else {
-+                FoodTypeRow(foodType: $viewModel.foodType, absorptionTime: $viewModel.absorptionTime, selectedDefaultAbsorptionTimeEmoji: $viewModel.selectedDefaultAbsorptionTimeEmoji, usesCustomFoodType: $viewModel.usesCustomFoodType, absorptionTimeWasEdited: $viewModel.absorptionTimeWasEdited, isFocused: foodTypeFocused, defaultAbsorptionTimes: viewModel.defaultAbsorptionTimes)
++                FoodTypeRow(selectedFavoriteFood: selectedFavoriteFoodBinding, foodType: $viewModel.foodType, absorptionTime: $viewModel.absorptionTime, selectedDefaultAbsorptionTimeEmoji: $viewModel.selectedDefaultAbsorptionTimeEmoji, usesCustomFoodType: $viewModel.usesCustomFoodType, absorptionTimeWasEdited: $viewModel.absorptionTimeWasEdited, isFocused: foodTypeFocused, showClearFavoriteFoodButton: !isNewEntry, defaultAbsorptionTimes: viewModel.defaultAbsorptionTimes)
 +            }
              
              CardSectionDivider()
@@ -71,7 +178,7 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
 +            if isNewEntry {
 +                CardSectionDivider()
 +                Button {
-+                    mealReviewSource = .camera
++                    mealReviewSource = MealReviewSource(id: viewModel.beginPhotoReview(), kind: .camera)
 +                } label: {
 +                    Label("Photograph meal", systemImage: "camera")
 +                        .frame(maxWidth: .infinity, alignment: .leading)
@@ -79,7 +186,7 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
 +                .accessibilityIdentifier("photographMealInLoop")
 +                CardSectionDivider()
 +                Button {
-+                    mealReviewSource = .photoLibrary
++                    mealReviewSource = MealReviewSource(id: viewModel.beginPhotoReview(), kind: .photoLibrary)
 +                } label: {
 +                    Label("Choose photo", systemImage: "photo.on.rectangle")
 +                        .frame(maxWidth: .infinity, alignment: .leading)
@@ -89,13 +196,13 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
          }
          .padding(.vertical, 12)
          .padding(.horizontal)
-@@ -133,7 +182,57 @@
+@@ -165,8 +210,53 @@ struct CarbEntryView: View, HorizontalSizeClassOverride {
      }
      
      private func clearExpandedRow() {
 +        foodDescriptionFocused = false
          self.expandedRow = nil
-+    }
+     }
 +
 +    private var foodDescriptionRow: some View {
 +        VStack(alignment: .leading, spacing: 4) {
@@ -115,7 +222,7 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
 +            usesFoodDescriptionEditor = true
 +            foodDescriptionFocused = expandedRow == .foodType
 +        }
-+        .onChange(of: foodDescriptionFocused) { focused in
++        .onChange(of: foodDescriptionFocused) { _, focused in
 +            if focused {
 +                expandedRow = .foodType
 +            }
@@ -130,124 +237,141 @@ diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
 +        }
 +    }
 +
-+    @ViewBuilder
 +    private var foodDescriptionField: some View {
-+        if #available(iOS 16.0, *) {
-+            TextField("", text: $viewModel.foodType, axis: .vertical)
-+                .lineLimit(1...)
-+                .fixedSize(horizontal: false, vertical: true)
-+        } else {
-+            TextEditor(text: $viewModel.foodType)
-+                .frame(height: 100)
-+        }
++        TextField("", text: $viewModel.foodType, axis: .vertical)
++            .lineLimit(1...)
++            .fixedSize(horizontal: false, vertical: true)
 +    }
 +
 +    private var foodTypeTitle: String {
 +        NSLocalizedString("Food Type", bundle: Bundle(for: EmojiInputController.self), comment: "Label for the food type row on the carb entry screen")
-     }
- }
- 
-diff --git "a/Loop/View Models/CarbEntryViewModel.swift" "b/Loop/View Models/CarbEntryViewModel.swift"
---- "a/Loop/View Models/CarbEntryViewModel.swift"
-+++ "b/Loop/View Models/CarbEntryViewModel.swift"
-@@ -85,6 +85,7 @@
-     weak var delegate: CarbEntryViewModelDelegate?
-     
-     private lazy var cancellables = Set<AnyCancellable>()
-+    private var favoriteFoodIndexObserver: AnyCancellable?
-     
-     /// Initalizer for when`CarbEntryView` is presented from the home screen
-     init(delegate: CarbEntryViewModelDelegate) {
-@@ -210,6 +211,27 @@
-         }
-     }
-     
-+    /// Accept reviewed input without saving an entry or advancing to the bolus screen.
-+    @MainActor
-+    @discardableResult
-+    func applyPhotoReview(carbohydrateGrams: Double, absorptionMinutes: Double, foodDescription: String) -> Bool {
-+        guard carbohydrateGrams.isFinite, absorptionMinutes.isFinite,
-+              0...maxCarbEntryQuantity.doubleValue(for: preferredCarbUnit) ~= carbohydrateGrams,
-+              absorptionRimesRange.contains(absorptionMinutes * 60) else { return false }
-+
-+        // Cancel queued favorite changes before clearing the selection; they must not overwrite the review.
-+        favoriteFoodIndexObserver?.cancel()
-+        selectedFavoriteFoodIndex = -1
-+        selectedDefaultAbsorptionTimeEmoji = ""
-+        carbsQuantity = carbohydrateGrams
-+        foodType = foodDescription
-+        usesCustomFoodType = true
-+        absorptionTime = absorptionMinutes * 60
-+        absorptionTimeWasEdited = true
-+        observeFavoriteFoodIndexChange()
-+        return true
 +    }
 +
-     // MARK: - Favorite Foods
-     func onFavoriteFoodSave(_ food: NewFavoriteFood) {
-         let newStoredFood = StoredFavoriteFood(name: food.name, carbsQuantity: food.carbsQuantity, foodType: food.foodType, absorptionTime: food.absorptionTime)
-@@ -218,13 +240,12 @@
-     }
-     
-     private func observeFavoriteFoodIndexChange() {
--        $selectedFavoriteFoodIndex
-+        favoriteFoodIndexObserver = $selectedFavoriteFoodIndex
-             .receive(on: RunLoop.main)
-             .dropFirst()
-             .sink { [weak self] index in
-                 self?.favoriteFoodSelected(at: index)
-             }
--            .store(in: &cancellables)
-     }
-     
-     private func observeFavoriteFoodChange() {
-diff --git a/Loop/Views/BolusEntryView.swift b/Loop/Views/BolusEntryView.swift
---- a/Loop/Views/BolusEntryView.swift
-+++ b/Loop/Views/BolusEntryView.swift
-@@ -198,19 +198,34 @@
+ }
  
-     @ViewBuilder
-     private var potentialCarbEntryRow: some View {
--        if viewModel.carbEntryAmountAndEmojiString != nil && viewModel.carbEntryDateAndAbsorptionTimeString != nil {
--            HStack {
--                Text("Carb Entry", comment: "Label for carb entry row on bolus screen")
--
--                Text(viewModel.carbEntryAmountAndEmojiString!)
--                    .foregroundColor(Color(.carbTintColor))
--                    .modifier(LabelBackground())
--
--                Spacer()
--
--                Text(viewModel.carbEntryDateAndAbsorptionTimeString!)
-+        if let entry = viewModel.potentialCarbEntry,
-+           let amount = QuantityFormatter(for: .gram()).string(from: entry.quantity),
-+           let time = viewModel.carbEntryDateAndAbsorptionTimeString {
-+            VStack(alignment: .leading, spacing: 6) {
-+                HStack(alignment: .firstTextBaseline) {
-+                    Text("Carb Entry", comment: "Label for carb entry row on bolus screen")
-+                    Spacer(minLength: 8)
-+                    Text(verbatim: amount)
-+                        .foregroundColor(Color(.carbTintColor))
-+                        .modifier(LabelBackground())
-+                }
-+
-+                Text(verbatim: time)
-+                    .font(.subheadline)
-                     .foregroundColor(Color(.secondaryLabel))
--            }
-+                    .fixedSize(horizontal: false, vertical: true)
-+
-+                if let food = entry.foodType ?? viewModel.selectedCarbAbsorptionTimeEmoji, !food.isEmpty {
-+                    Text(verbatim: food)
-+                        .foregroundColor(Color(.carbTintColor))
-+                        .lineLimit(nil)
-+                        .multilineTextAlignment(.leading)
-+                        .fixedSize(horizontal: false, vertical: true)
-+                        .frame(maxWidth: .infinity, alignment: .leading)
-+                }
-+            }
-+            .frame(maxWidth: .infinity, alignment: .leading)
-+            .accessibilityElement(children: .combine)
-         }
-     }
+ // MARK: - Warnings & Alerts
+diff --git a/LoopTests/ViewModels/BolusEntryViewModelTests.swift b/LoopTests/ViewModels/BolusEntryViewModelTests.swift
+index dd26c27..d937318 100644
+--- a/LoopTests/ViewModels/BolusEntryViewModelTests.swift
++++ b/LoopTests/ViewModels/BolusEntryViewModelTests.swift
+@@ -12,6 +12,7 @@ import LoopKit
+ import LoopKitUI
+ import SwiftUI
+ import XCTest
++import FoodRecognitionCore
+ import LoopAlgorithm
  
+ @testable import Loop
+@@ -1070,3 +1071,112 @@ extension StoredGlucoseSample {
+         StoredGlucoseSample(startDate: date, quantity: .glucose(value: value))
+     }
+ }
++
++// Experimental photo adapter regression tests. All storage and delivery delegates are mocks.
++@MainActor
++final class MealPhotoMigrationTests: XCTestCase {
++    private final class Delegate: MockBolusEntryViewModelDelegate, CarbEntryViewModelDelegate {
++        var defaultAbsorptionTimes: DefaultAbsorptionTimes { LoopCoreConstants.defaultCarbAbsorptionTimes }
++        func isScheduleOverrideActive(at date: Date) -> Bool { false }
++        func getGlucoseSamples(start: Date?, end: Date?) async throws -> [StoredGlucoseSample] { [] }
++        func selectedFavoriteFoodLastEaten(_ food: StoredFavoriteFood) async throws -> Date? { nil }
++        func getFavoriteFoodCarbEntries(_ food: StoredFavoriteFood) async throws -> [StoredCarbEntry] { [] }
++        func getHistoricalChartsData(start: Date, end: Date) async throws -> HistoricalChartsData {
++            throw BolusEntryViewTestError.responseUndefined
++        }
++    }
++
++    private func meal() async throws -> ReviewedMeal {
++        let session = MealEstimateSession()
++        await session.analyze(photo: .demo, using: MockFoodEstimator(delayNanoseconds: 0))
++        var draft = try XCTUnwrap(session.draft)
++        draft.carbohydrateText = "12,5"
++        draft.absorptionMinutesText = "90,5"
++        draft.mealNotes = "Two large slices; banana not ripe"
++        session.edit(draft)
++        var result: ReviewedMeal?
++        XCTAssertTrue(session.finishReview(locale: Locale(identifier: "de_DE")) { result = $0; return true })
++        return try XCTUnwrap(result)
++    }
++
++    func testReviewedValuesStayEditableWithoutSavingOrBolusNavigation() async throws {
++        let delegate = Delegate()
++        let vm = CarbEntryViewModel(delegate: delegate)
++        let time = vm.time, settings = delegate.settings
++        XCTAssertTrue(vm.applyPhotoReview(try await meal(), request: vm.beginPhotoReview()))
++        XCTAssertEqual(vm.carbsQuantity, 12.5)
++        XCTAssertEqual(vm.absorptionTime, 5430)
++        XCTAssertEqual(vm.foodType, "Two large slices; banana not ripe")
++        XCTAssertTrue(vm.usesCustomFoodType)
++        XCTAssertTrue(vm.absorptionTimeWasEdited)
++        XCTAssertEqual(vm.time, time)
++        XCTAssertNil(vm.bolusViewModel)
++        XCTAssertTrue(delegate.carbEntriesAdded.isEmpty)
++        XCTAssertTrue(delegate.carbEntriesReplaced.isEmpty)
++        XCTAssertNil(delegate.enactedBolusUnits)
++        XCTAssertEqual(delegate.settings.maximumBolus, settings.maximumBolus)
++        vm.carbsQuantity = 15
++        vm.absorptionTime = 6000
++        vm.foodType = "Edited again"
++        XCTAssertEqual(vm.carbsQuantity, 15)
++        XCTAssertNil(vm.bolusViewModel)
++    }
++
++    func testDuplicateCallbackCannotOverwriteManualEdits() async throws {
++        let delegate = Delegate()
++        let vm = CarbEntryViewModel(delegate: delegate)
++        let request = vm.beginPhotoReview(), reviewed = try await meal()
++        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: request))
++        vm.carbsQuantity = 20
++        XCTAssertFalse(vm.applyPhotoReview(reviewed, request: request))
++        XCTAssertEqual(vm.carbsQuantity, 20)
++        XCTAssertTrue(delegate.carbEntriesAdded.isEmpty)
++    }
++
++    func testCancellationAndOldPresentationLeaveEntryUntouched() async throws {
++        let delegate = Delegate()
++        let vm = CarbEntryViewModel(delegate: delegate)
++        vm.carbsQuantity = 22
++        vm.foodType = "Manual entry"
++        let reviewed = try await meal(), cancelled = vm.beginPhotoReview()
++        vm.cancelPhotoReview()
++        XCTAssertFalse(vm.applyPhotoReview(reviewed, request: cancelled))
++        let old = vm.beginPhotoReview(), current = vm.beginPhotoReview()
++        XCTAssertFalse(vm.applyPhotoReview(reviewed, request: old))
++        XCTAssertEqual(vm.carbsQuantity, 22)
++        XCTAssertEqual(vm.foodType, "Manual entry")
++        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: current))
++        XCTAssertTrue(delegate.carbEntriesAdded.isEmpty)
++        XCTAssertNil(vm.bolusViewModel)
++    }
++
++    func testQueuedFavoriteChangesDoNotClobberReviewedValues() async throws {
++        let delegate = Delegate()
++        let vm = CarbEntryViewModel(delegate: delegate)
++        vm.favoriteFoods = [StoredFavoriteFood(name: "Favorite", carbsQuantity: LoopQuantity(unit: .gram, doubleValue: 70), foodType: "Favorite food", absorptionTime: 14400)]
++        vm.selectedFavoriteFoodIndex = 0
++        XCTAssertTrue(vm.applyPhotoReview(try await meal(), request: vm.beginPhotoReview()))
++        try await Task.sleep(nanoseconds: 100_000_000)
++        XCTAssertEqual(vm.selectedFavoriteFoodIndex, -1)
++        XCTAssertEqual(vm.carbsQuantity, 12.5)
++        XCTAssertEqual(vm.absorptionTime, 5430)
++        XCTAssertEqual(vm.foodType, "Two large slices; banana not ripe")
++        XCTAssertNil(vm.bolusViewModel)
++    }
++
++    func testNativeLimitsRejectAtomicallyAndAllowCorrection() async throws {
++        let delegate = Delegate()
++        let vm = CarbEntryViewModel(delegate: delegate)
++        vm.carbsQuantity = 8
++        vm.foodType = "Keep me"
++        let request = vm.beginPhotoReview(), reviewed = try await meal()
++        vm.maxCarbEntryQuantity = LoopQuantity(unit: .gram, doubleValue: 10)
++        XCTAssertFalse(vm.applyPhotoReview(reviewed, request: request))
++        XCTAssertEqual(vm.carbsQuantity, 8)
++        XCTAssertEqual(vm.foodType, "Keep me")
++        vm.maxCarbEntryQuantity = LoopQuantity(unit: .gram, doubleValue: 250)
++        XCTAssertTrue(vm.applyPhotoReview(reviewed, request: request))
++        XCTAssertNil(vm.bolusViewModel)
++        XCTAssertTrue(delegate.carbEntriesAdded.isEmpty)
++    }
++}
