@@ -10,7 +10,7 @@ The follow-up CI startup probe copies the normal Simulator app into a temporary 
 
 No independent clinical or safety validation has been performed. The authoring assistant's source review and automated tests cannot provide that independence.
 
-The follow-up workflow uses the supported `macos-26` Arm64 runner and explicitly selects Xcode 26.3 (17C529), which is listed in the [official runner image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md). The macOS 15 retry was cancelled before receiving a runner; no app code or dependency pin changed for this host fallback. Record the actual run outcome before claiming validation on this host.
+The follow-up workflow uses the supported `macos-26-intel` runner and explicitly selects Xcode 26.3 (17C529), which is listed in the [official runner image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md). The macOS 15 and macOS 26 Arm64 retries were cancelled before receiving a runner; no app code or dependency pin changed for this host fallback. The earlier passing build/tests used Arm64; record the actual Intel run outcome before claiming validation on this host. The device archive still targets iOS, independently of the Mac host architecture.
 
 ## Source review completed by the authoring assistant
 
