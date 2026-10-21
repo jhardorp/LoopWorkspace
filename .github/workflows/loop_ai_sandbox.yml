@@ -18,6 +18,35 @@ concurrency:
   group: ${{ contains(github.event.head_commit.message, '[full-loop-launch]') && 'loop-ai-full-launch' || (contains(github.event.head_commit.message, '[full-loop-prepared]') && 'loop-ai-full-preparation' || ((contains(github.event.head_commit.message, '[sandbox-access-check]') || contains(github.event.head_commit.message, '[sandbox-repair-record]')) && 'loop-ai-app-record-check' || 'loop-ai-separate-test-app')) }}
   cancel-in-progress: true
 jobs:
+  full_loop_current_group:
+    name: Refresh the separate app's current App Group status
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[full-loop-profile-current]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Read the current group with an independent test-only profile
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          TEAMID: ${{ secrets.TEAMID }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: |
+          ruby -c fastlane/Fastfile
+          bundle exec fastlane ios check_current_group
   full_loop_inspect:
     name: Inspect retained full-app entitlement diagnostics
     if: >-

@@ -8,11 +8,49 @@ require 'shellwords'
 require 'xcodeproj'
 require 'digest'
 require 'time'
+require 'cfpropertylist'
 
 default_platform(:ios)
 opt_out_usage
 
 platform :ios do
+  desc 'Check the current private group using a distinct metadata-only test profile'
+  lane :check_current_group do
+    identity = 'com.jhardorp.loopaiphototest'
+    group = 'group.' + identity
+    UI.user_error!('Migration Actions check required') unless
+      ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo'
+    team = ENV.fetch('TEAMID')
+    app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),
+                              issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
+                              key_content: ENV.fetch('FASTLANE_KEY'))
+    bundle = Spaceship::ConnectAPI::BundleId.find(identity)
+    UI.user_error!('Separate test identifier missing') unless bundle && bundle.identifier == identity
+    # Reuse a currently valid certificate already linked to this test ID. No
+    # certificate/private-key download, certificate issuance or renewal occurs.
+    profiles = Spaceship::ConnectAPI::Profile.all(filter: {profileType: 'IOS_APP_STORE'}, includes: 'bundleId,certificates')
+    certificates = profiles.select { |profile| profile.bundle_id&.identifier == identity }.flat_map(&:certificates)
+    certificate_ids = certificates.select { |certificate| Time.parse(certificate.expiration_date) > Time.now }.map(&:id).uniq
+    UI.user_error!('Expected one existing valid test certificate') unless certificate_ids.length == 1
+    name = "Loop Next AI group inspection #{ENV.fetch('GITHUB_RUN_ID')}-#{ENV.fetch('GITHUB_RUN_ATTEMPT')}"
+    # A distinct name prevents this inspection from renewing/deleting a profile
+    # used by the full-app archive that may be running concurrently.
+    profile = Spaceship::ConnectAPI::Profile.create(name: name, profile_type: 'IOS_APP_STORE',
+                                                   bundle_id_id: bundle.id, certificate_ids: certificate_ids)
+    cms = OpenSSL::PKCS7.new(Base64.strict_decode64(profile.profile_content))
+    parsed = CFPropertyList.native_types(CFPropertyList::List.new(data: cms.data).value)
+    entitlements = parsed.fetch('Entitlements')
+    UI.user_error!('Inspection profile identity mismatch') unless
+      entitlements.fetch('application-identifier') == "#{team}.#{identity}" && parsed.fetch('TeamIdentifier') == [team]
+    groups = entitlements.fetch('com.apple.security.application-groups', [])
+    UI.message('CURRENT_TEST_GROUP: ' + JSON.generate({
+      bundle: identity, expected_group: group, profile_groups: groups,
+      group_ready: groups == [group], checked_at: Time.now.utc.iso8601,
+      binary_signed: false, uploaded: false, production_modified: false
+    }))
+    UI.user_error!('The private App Group association is still absent from a fresh Apple profile') unless groups == [group]
+  end
+
   desc 'Upload only the verified full main-app candidate to the owner-approved separate slot'
   lane :upload_verified_candidate do
     identity = 'com.jhardorp.loopaiphototest'
