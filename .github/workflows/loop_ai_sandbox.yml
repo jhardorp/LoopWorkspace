@@ -19,7 +19,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   validate:
-    if: github.ref == 'refs/heads/migration/loop4-ai-photo'
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      !contains(github.event.head_commit.message, '[sandbox-upload-approved]')
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -174,3 +176,68 @@ jobs:
             ${{ runner.temp }}/LoopAISandboxCandidate/AppRecordStatus.json
           if-no-files-found: error
           retention-days: 7
+  upload_approved_candidate:
+    name: Upload the approved isolated build only
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[sandbox-upload-approved]')
+    runs-on: macos-15
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Require the successful validated candidate run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const {data: run} = await github.rest.actions.getWorkflowRun({owner, repo, run_id: 39597325857});
+            if (run.conclusion !== 'success' || run.head_sha !== '8af1328f54fa72807c3fe314d82f67cf488603a1' ||
+                run.head_branch !== 'migration/loop4-ai-photo' || run.path !== '.github/workflows/loop_ai_sandbox.yml') {
+              throw new Error('Candidate validation provenance mismatch');
+            }
+            const {data: artifact} = await github.rest.actions.getArtifact({owner, repo, artifact_id: 12346108397});
+            if (artifact.expired || artifact.workflow_run.id !== run.id ||
+                artifact.name !== 'loop-ai-separate-candidate-' + run.head_sha ||
+                artifact.digest !== 'sha256:ff49798ab556c1673f31529988ab022f6788ac610fc9fd00c8bcb41a76aa363b') {
+              throw new Error('Candidate artifact provenance mismatch');
+            }
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12346108397'
+          run-id: '39597325857'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/LoopAISandboxCandidate
+          merge-multiple: true
+      - name: Recheck the exact signed IPA before uploading
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/verify_upload.py "$RUNNER_TEMP/LoopAISandboxCandidate"
+          bundle install
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/fastlane/Fastfile
+      - name: Upload only Loop AI Test and check Apple processing
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+          APPROVED_SANDBOX_UPLOAD: '0.1.0 (4)'
+        run: bundle exec fastlane ios upload_approved_candidate
+      - name: Retain upload and Apple processing status
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-ai-testflight-status-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/LoopAISandboxCandidate/VerifiedUpload.json
+            ${{ runner.temp }}/LoopAISandboxCandidate/UploadStatus.json
+          if-no-files-found: warn
+          retention-days: 14

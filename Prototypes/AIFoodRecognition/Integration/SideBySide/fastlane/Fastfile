@@ -2,11 +2,90 @@ require 'base64'
 require 'fileutils'
 require 'json'
 require 'openssl'
+require 'digest'
+require 'time'
 
 default_platform(:ios)
 opt_out_usage
 
 platform :ios do
+  desc 'Upload only the exact isolated candidate explicitly approved by its owner'
+  lane :upload_approved_candidate do
+    UI.user_error!('Approved migration Actions upload required') unless
+      ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo' &&
+      ENV['APPROVED_SANDBOX_UPLOAD'] == '0.1.0 (4)'
+    identity = 'com.jhardorp.loopaiphototest'
+    directory = File.join(ENV.fetch('RUNNER_TEMP'), 'LoopAISandboxCandidate')
+    ipa = File.join(directory, 'LoopAIPhotoTest.ipa')
+    verified = JSON.parse(File.read(File.join(directory, 'VerifiedUpload.json')))
+    expected_hash = '888f37757cd83537228018437d1bfa2a78e6da5660cddd8d17f99959cd8d3a55'
+    UI.user_error!('Unapproved IPA identity or content') unless
+      verified.fetch('bundle') == identity && verified.fetch('version') == '0.1.0' &&
+      verified.fetch('build') == '4' && verified.fetch('storage') == 'MemoryOnly' &&
+      verified.fetch('source') == '8af1328f54fa72807c3fe314d82f67cf488603a1' &&
+      verified.fetch('ipa_sha256') == expected_hash && Digest::SHA256.file(ipa).hexdigest == expected_hash
+    api_key = app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),
+                                      issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
+                                      key_content: ENV.fetch('FASTLANE_KEY'))
+    status = {bundle: identity, version: '0.1.0', build: '4', ipa_sha256: expected_hash,
+              upload_accepted: false, existing_build: false, processing_state: 'NOT_UPLOADED',
+              external_distribution: false, device_installed: false}
+    save_status = lambda do
+      status[:checked_at] = Time.now.utc.iso8601
+      File.write(File.join(directory, 'UploadStatus.json'), JSON.pretty_generate(status) + "\n")
+      UI.message("Loop AI Test upload status: #{JSON.generate(status)}")
+    end
+    begin
+      app = Spaceship::ConnectAPI::App.find(identity)
+      UI.user_error!('The separate Loop AI Test App Store Connect record is missing') unless app && app.bundle_id == identity
+      status[:app_id] = app.id
+      UI.message('The separate Loop AI Test app record is present.')
+      find_build = lambda do
+        Spaceship::ConnectAPI::Build.all(app_id: app.id, version: '0.1.0', build_number: '4', platform: 'IOS').first
+      end
+      build = find_build.call
+      status[:existing_build] = !build.nil?
+      unless build
+        upload_to_testflight(api_key: api_key, app_identifier: identity, apple_id: app.id,
+                             ipa: ipa, skip_waiting_for_build_processing: true,
+                             skip_submission: true, distribute_external: false,
+                             notify_external_testers: false)
+        status[:upload_accepted] = true
+      end
+      status[:processing_state] = build ? build.processing_state : 'AWAITING_APPLE_RECORD'
+      save_status.call
+      deadline = Time.now + 20 * 60
+      loop do
+        build ||= find_build.call
+        if build
+          status[:build_id] = build.id
+          status[:processing_state] = build.processing_state
+          unless build.build_beta_detail.nil?
+            status[:ready_for_internal_testing] = build.ready_for_internal_testing?
+            status[:missing_export_compliance] = build.missing_export_compliance?
+          end
+          save_status.call
+          break if build.processed?
+        end
+        break if Time.now >= deadline
+        sleep(30)
+        build = nil
+      end
+      UI.user_error!('Apple rejected processing of this isolated test build; see UploadStatus.json') if
+        ['FAILED', 'INVALID'].include?(status[:processing_state])
+      if status[:processing_state] == 'VALID'
+        UI.success('Apple processed Loop AI Test 0.1.0 (4). No production app, tester group or device was changed.')
+      else
+        UI.important('Upload accepted; Apple processing is still pending. See UploadStatus.json for the actual status.')
+      end
+    rescue StandardError => error
+      status[:error_type] = error.class.name
+      raise
+    ensure
+      save_status.call
+    end
+  end
+
   desc 'Prepare only the separately identified AI test app; never upload or install'
   lane :prepare_side_by_side do
     UI.user_error!('Migration Actions branch required') unless

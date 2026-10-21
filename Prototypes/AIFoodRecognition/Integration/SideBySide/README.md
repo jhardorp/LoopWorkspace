@@ -2,7 +2,8 @@
 
 This prepares an experimental AI interface test app alongside the working Loop.
 It does not upgrade or replace the working Loop. No upload or device installation
-is performed by this workflow.
+is performed by the preparation workflow. A separate, explicitly authorized upload
+job can send the exact validated candidate to TestFlight, as described below.
 
 ## Identity and isolation
 
@@ -123,6 +124,17 @@ upload and Apple processing before on-phone testing. This setup does not replace
 or change the existing Loop app record.
 
 ## On-phone acceptance after approved distribution
+
+On 2026-10-21 the owner confirmed creation of the separate Apple record and
+explicitly authorized: **"Created, upload the test app"**. The migration-only
+`[sandbox-upload-approved]` job is restricted to the existing **0.1.0 (4)** IPA
+and its recorded SHA-256 above. It requires the successful source validation run,
+downloads that exact retained artifact, rechecks the signature/identity/isolation,
+and uploads only `com.jhardorp.loopaiphototest`. It reuses an existing Apple build
+instead of uploading a duplicate, records processing status, and does not change
+signing, production, external tester groups or install anything on a device.
+`UploadStatus.json` is the evidence for the actual upload/processing outcome;
+this authorization alone does not establish a successful upload.
 
 Keep the working Loop installed. Open **Loop AI Test** and verify its TEST label.
 Use Test a meal entry to check first-tap camera/gallery routing, cancellation,
