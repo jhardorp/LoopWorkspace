@@ -213,7 +213,7 @@ jobs:
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
       github.event_name == 'push' &&
       contains(github.event.head_commit.message, '[sandbox-upload-approved]')
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 40
     permissions:
       contents: read

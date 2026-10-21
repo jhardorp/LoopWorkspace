@@ -123,6 +123,31 @@ cannot be installed directly; it still needs an explicitly approved TestFlight
 upload and Apple processing before on-phone testing. This setup does not replace
 or change the existing Loop app record.
 
+## Apple record correction — 2026-10-21
+
+The first approved upload attempt reverified the exact IPA but stopped before
+uploading because Apple could not find the new bundle ID. A read-only check in
+[run 39623975150](https://github.com/jhardorp/LoopWorkspace/actions/runs/39623975150)
+identified the owner's newly created **Loop AI Test jhardorp** app record bound to
+Loop's widget-extension ID instead of the isolated app ID. The expected separate
+developer identifier was already registered and visible to the API connection.
+
+Apple rejected API record creation with `apps does not allow CREATE`. The correction
+therefore targeted only that exact named test record after confirming **zero
+uploaded builds**. PATCH changed only its App Store Connect bundle-ID field to
+`com.jhardorp.loopaiphototest`. A fresh read at **15:26:04 UTC** confirmed the right
+name and bundle ID; a repeat check in
+[run 39625154770](https://github.com/jhardorp/LoopWorkspace/actions/runs/39625154770)
+passed at **15:37:32 UTC**. The initial immediate collection lookup was stale;
+the correction helper now reads the known record ID with bounded retries.
+Registered production/widget identifiers, signing profiles, app records for the
+working Loop and the installed app were not changed.
+
+The already authorized upload of the same **0.1.0 (4)** signed IPA is being retried.
+The upload-only job uses the documented **macos-15-intel** runner and the same
+**Xcode 26.3 (17C529)** after the default macOS runner queue stalled. No binary is
+rebuilt. The upload job's `UploadStatus.json` records the actual final outcome.
+
 ## On-phone acceptance after approved distribution
 
 On 2026-10-21 the owner confirmed creation of the separate Apple record and

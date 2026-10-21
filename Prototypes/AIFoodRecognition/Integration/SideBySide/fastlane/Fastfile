@@ -33,8 +33,13 @@ platform :ios do
       # registered widget identifier, its signing profile, or the production app.
       UI.message('The user-created test record has no builds; correcting only its bundle ID.')
       candidate.update(attributes: {bundle_id: identity})
-      app = Spaceship::ConnectAPI::App.find(identity)
-      UI.user_error!('Corrected record ID changed unexpectedly') unless app && app.id == candidate.id
+      # Apple can return stale bundle-ID collection results just after PATCH.
+      12.times do
+        app = Spaceship::ConnectAPI::App.get(app_id: candidate.id)
+        UI.user_error!('Corrected record ID changed unexpectedly') unless app && app.id == candidate.id
+        break if app.bundle_id == identity
+        sleep(5)
+      end
     end
     UI.user_error!('The correct separate app record is still unavailable') unless app && app.bundle_id == identity
     UI.success("The separate app record is ready: #{identity}. No developer identifier, signing or installed app was changed; no upload occurred.")
