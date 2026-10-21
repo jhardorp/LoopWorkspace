@@ -2,6 +2,9 @@ name: Experimental Loop AI migration validation
 on:
   push:
     branches: ['migration/loop4-ai-photo']
+    paths-ignore:
+      - 'Prototypes/AIFoodRecognition/Integration/SideBySide/**'
+      - '.github/workflows/loop_ai_sandbox.yml'
   workflow_dispatch:
     inputs:
       prepare_signed_candidate:

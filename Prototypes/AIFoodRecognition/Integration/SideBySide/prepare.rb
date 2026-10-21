@@ -107,6 +107,8 @@ tests.source_build_phase.add_file_reference(test_source)
 tests.build_configurations.each do |config|
   config.build_settings.merge!({
     'SWIFT_VERSION' => '5.0', 'GENERATE_INFOPLIST_FILE' => 'YES',
+    'PRODUCT_NAME' => '$(TARGET_NAME)',
+    'PRODUCT_MODULE_NAME' => 'LoopAIPhotoSandboxUITests',
     'PRODUCT_BUNDLE_IDENTIFIER' => identity + '.uitests',
     'TEST_TARGET_NAME' => 'Loop', 'CODE_SIGN_STYLE' => 'Manual',
     'TARGETED_DEVICE_FAMILY' => '1', 'SKIP_INSTALL' => 'YES'

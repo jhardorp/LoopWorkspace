@@ -70,8 +70,24 @@ platform :ios do
         output_directory: artifacts, output_name: 'LoopAIPhotoTest.ipa',
         buildlog_path: File.join(artifacts, 'logs'))
     app_record = Spaceship::ConnectAPI::App.find(identity)
+    creation_attempted = app_record.nil?
+    creation_error = nil
+    if app_record.nil?
+      begin
+        # A private, empty record for this new ID only. No binary is uploaded,
+        # no tester is invited and nothing is submitted or published.
+        Spaceship::ConnectAPI::App.create(name: 'Loop AI Test jhardorp', version_string: '0.1.0',
+                                         sku: 'loop-ai-photo-test', primary_locale: 'en-US',
+                                         bundle_id: identity, platforms: ['IOS'])
+        app_record = Spaceship::ConnectAPI::App.find(identity)
+      rescue StandardError => error
+        creation_error = error.class.name
+        UI.important('The signed archive is ready, but automatic app-record creation is unavailable with this API connection. AppRecordStatus.json records the remaining setup.')
+      end
+    end
     File.write(File.join(artifacts, 'AppRecordStatus.json'), JSON.pretty_generate({
       bundle: identity, app_record_exists: !app_record.nil?, uploaded: false,
+      creation_attempted: creation_attempted, creation_error_type: creation_error,
       note: 'App Store Connect app record is required before a future explicitly approved TestFlight upload.'
     }) + "\n")
     UI.success('Separate Loop AI Test archive prepared. No TestFlight upload, device installation, production provisioning changes or deployment.')

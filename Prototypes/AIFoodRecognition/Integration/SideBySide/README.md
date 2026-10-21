@@ -59,7 +59,9 @@ repository. Root signing/distribution configuration remains unchanged.
 The archive contains `LoopAIPhotoTest.ipa`, `SandboxCandidate.json` with effective
 identity, isolation, source and IPA hash, and `AppRecordStatus.json`. A separate App
 Store Connect app record is required for future TestFlight distribution. The lane
-checks whether it exists and reports that status; it does not upload. The App Store
+checks whether it exists and attempts to create only this new app's private record.
+If the API connection cannot create records, it records that remaining setup without
+publishing or discarding the signed archive. It does not upload. The App Store
 IPA is not directly installable. Upload or installation requires the user's explicit
 approval under the migration instructions.
 
