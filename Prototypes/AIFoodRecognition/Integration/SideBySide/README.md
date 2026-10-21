@@ -5,6 +5,25 @@ It does not upgrade or replace the working Loop. No upload or device installatio
 is performed by the preparation workflow. A separate, explicitly authorized upload
 job can send the exact validated candidate to TestFlight, as described below.
 
+## Current processing correction
+
+The read-only check at **2026-10-21 16:39:37 UTC** found that build **0.1.0 (4)**
+failed Apple ingestion after transport acceptance. Apple's `BuildUpload.state`
+reported missing Health read/write and Siri purpose strings (90683), plus a
+Bluetooth-purpose warning. It produced no installable Build. The earlier
+20-minute poll of Build alone had not surfaced this ingestion failure.
+
+The generator now includes four explicit privacy descriptions from
+`PrivacyDescriptions.json`, stating that these features are disabled in the
+isolated test app. Apple requires this metadata for references in the linked
+Loop libraries. These strings grant no entitlement, start no service and do not
+change the isolated delegate, device/plugin exclusions or memory-only storage.
+The product verifier requires the exact descriptions and continues to reject
+HealthKit/Siri grants, shared stores, device plugins and background services.
+Six Python cases now cover the metadata and isolation boundaries. The upload
+poller also checks BuildUpload failures and records their actual errors.
+A fresh validated/signed candidate is required before another upload.
+
 ## Identity and isolation
 
 - Display name: **Loop AI Test**, with a new orange TEST icon.
@@ -44,7 +63,7 @@ is personal and must not be publicly redistributed.
 ## Validation and archive
 
 The migration-only `Separate Loop AI test app` workflow pins Xcode 26.3 and verifies
-protected production configuration. It runs five isolation regression tests and
+protected production configuration. It runs six isolation regression tests and
 four memory-ledger tests, builds the app unsigned, packages it for Simulator with
 Xcode ad-hoc signing, checks effective isolation, and runs two actual UI cases:
 native editor cancellation and one explicit test save followed by an empty relaunch.

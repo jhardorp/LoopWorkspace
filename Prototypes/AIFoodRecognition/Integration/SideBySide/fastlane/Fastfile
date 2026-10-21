@@ -77,7 +77,7 @@ platform :ios do
         checked_at: Time.now.utc.iso8601
       }))
       # Upload records remain useful when ingestion has not produced a Build yet.
-      uploads = Spaceship::ConnectAPI::BuildUpload.all(app_id: app.id, version: '0.1.0', build_number: '4')
+      uploads = Spaceship::ConnectAPI::BuildUpload.all(app_id: app.id)
       UI.message('APPLE_UPLOAD_CHECK: ' + JSON.generate({
         bundle: identity, uploads: uploads.map do |upload|
           {version: upload.cf_build_short_version_string, build: upload.cf_build_version,
@@ -147,6 +147,18 @@ platform :ios do
       deadline = Time.now + 20 * 60
       loop do
         build ||= find_build.call
+        ingestion = Spaceship::ConnectAPI::BuildUpload.all(app_id: app.id, version: '0.1.0', build_number: status[:build]).first
+        if ingestion
+          details = ingestion.state
+          ingestion_state = details.is_a?(Hash) ? details['state'] : details
+          status[:upload_processing_state] = ingestion_state
+          if ingestion_state == 'FAILED'
+            status[:processing_state] = 'FAILED'
+            status[:apple_errors] = details.is_a?(Hash) ? details['errors'] : []
+            save_status.call
+            UI.user_error!('Apple rejected upload processing; see UploadStatus.json for the actual validation errors')
+          end
+        end
         if build
           status[:build_id] = build.id
           status[:processing_state] = build.processing_state

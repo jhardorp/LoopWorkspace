@@ -10,10 +10,10 @@ IDENTITY = 'com.jhardorp.loopaiphototest'
 ALLOWED_ENTITLEMENTS = {'application-identifier', 'com.apple.developer.team-identifier',
                         'get-task-allow', 'beta-reports-active', 'keychain-access-groups'}
 FORBIDDEN_INFO = {'UIApplicationSceneManifest', 'UIMainStoryboardFile', 'UIBackgroundModes',
-                  'BGTaskSchedulerPermittedIdentifiers', 'NSHealthShareUsageDescription',
-                  'NSHealthUpdateUsageDescription', 'NSBluetoothAlwaysUsageDescription',
+                  'BGTaskSchedulerPermittedIdentifiers',
                   'NSBluetoothPeripheralUsageDescription', 'NFCReaderUsageDescription',
-                  'NSSiriUsageDescription', 'NSUserActivityTypes'}
+                  'NSUserActivityTypes'}
+REQUIRED_PURPOSE_STRINGS = json.loads(Path(__file__).with_name('PrivacyDescriptions.json').read_text())
 
 
 def verify(app, entitlements, source):
@@ -25,6 +25,8 @@ def verify(app, entitlements, source):
     assert info['MealPhotoSandboxSource'] == source, 'Source mismatch'
     assert info['AppGroupIdentifier'] == 'group.' + IDENTITY
     assert not FORBIDDEN_INFO.intersection(info), 'Device/health/background capability remains'
+    assert all(info.get(key) == value for key, value in REQUIRED_PURPOSE_STRINGS.items()), \
+        'Required isolated-app privacy description missing or changed'
     assert info['CFBundleURLTypes'] == [{'CFBundleURLName': IDENTITY, 'CFBundleURLSchemes': ['loop-ai-test']}]
     assert not set(entitlements).difference(ALLOWED_ENTITLEMENTS), 'Unexpected signed entitlement'
     for key in ('application-identifier',):
@@ -56,6 +58,7 @@ if __name__ == '__main__':
     record = {'source': args.source, 'bundle': IDENTITY, 'display_name': info['CFBundleDisplayName'],
               'version': info['CFBundleShortVersionString'], 'build': info['CFBundleVersion'],
               'storage': info['MealPhotoSandboxStorage'], 'entitlements': sorted(entitlements),
+              'privacy_description_keys': sorted(REQUIRED_PURPOSE_STRINGS),
               'restriction': 'AI UI test app only. No therapy, device connections or HealthKit access.'}
     if args.record:
         args.record.write_text(json.dumps(record, indent=2) + '\n')

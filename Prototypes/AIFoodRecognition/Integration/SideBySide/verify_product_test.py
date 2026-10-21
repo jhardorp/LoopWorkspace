@@ -2,7 +2,7 @@ import plistlib
 import tempfile
 import unittest
 from pathlib import Path
-from verify_product import IDENTITY, verify
+from verify_product import IDENTITY, REQUIRED_PURPOSE_STRINGS, verify
 
 
 class IsolationTests(unittest.TestCase):
@@ -17,7 +17,8 @@ class IsolationTests(unittest.TestCase):
             'CFBundleExecutable': 'Loop', 'MealPhotoSandbox': True,
             'MealPhotoSandboxSchema': 1, 'MealPhotoSandboxStorage': 'MemoryOnly',
             'MealPhotoSandboxSource': 'source', 'AppGroupIdentifier': 'group.' + IDENTITY,
-            'CFBundleURLTypes': [{'CFBundleURLName': IDENTITY, 'CFBundleURLSchemes': ['loop-ai-test']}]
+            'CFBundleURLTypes': [{'CFBundleURLName': IDENTITY, 'CFBundleURLSchemes': ['loop-ai-test']}],
+            **REQUIRED_PURPOSE_STRINGS
         }
 
     def check(self, entitlements=None):
@@ -30,6 +31,7 @@ class IsolationTests(unittest.TestCase):
 
     def testHealthKitSharedGroupAndWildcardKeychainAreRejected(self):
         for entitlement in ({'com.apple.developer.healthkit': True},
+                            {'com.apple.developer.siri': True},
                             {'com.apple.security.application-groups': ['group.workingLoop']},
                             {'keychain-access-groups': ['TEAM.*']},
                             {'application-identifier': 'TEAM.com.working.Loop'}):
@@ -40,10 +42,21 @@ class IsolationTests(unittest.TestCase):
         self.info['CFBundleIdentifier'] = 'com.working.Loop'
         with self.assertRaises(AssertionError): self.check()
         self.info['CFBundleIdentifier'] = IDENTITY
-        for key in ('NSHealthShareUsageDescription', 'UIBackgroundModes', 'UIApplicationSceneManifest'):
+        for key in ('NSBluetoothPeripheralUsageDescription', 'UIBackgroundModes', 'UIApplicationSceneManifest'):
             self.info[key] = []
             with self.assertRaises(AssertionError): self.check()
             del self.info[key]
+
+    def testApplePrivacyMetadataIsRequiredWithoutEnablingAccess(self):
+        self.check()
+        for key, value in REQUIRED_PURPOSE_STRINGS.items():
+            with self.subTest(key=key):
+                del self.info[key]
+                with self.assertRaises(AssertionError): self.check()
+                self.info[key] = 'Production app requests access to your data.'
+                with self.assertRaises(AssertionError): self.check()
+                self.info[key] = value
+        self.check()
 
     def testExtensionOrDevicePluginIsRejected(self):
         extension = self.app / 'Widget.appex'

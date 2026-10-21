@@ -1,5 +1,6 @@
 require 'xcodeproj'
 require 'fileutils'
+require 'json'
 
 abort('Separate test app preparation requires migration CI') unless
   ENV['CI'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo'
@@ -85,6 +86,9 @@ settings['CFBundleDisplayName'] = 'Loop AI Test'
 settings['AppGroupIdentifier'] = "group.#{identity}"
 settings['CFBundleURLTypes'] = [{'CFBundleURLName' => identity, 'CFBundleURLSchemes' => ['loop-ai-test']}]
 settings['NSCameraUsageDescription'] = 'Photograph food to test AI meal estimates in this separate test app.'
+# Apple scans linked Loop frameworks even though their Health/Siri/device paths
+# are not started by the isolated app. Purpose text does not grant entitlements.
+settings.merge!(JSON.parse(File.read(File.join(__dir__, 'PrivacyDescriptions.json'))))
 settings['MealPhotoSandbox'] = true
 settings['MealPhotoSandboxSchema'] = 1
 settings['MealPhotoSandboxStorage'] = 'MemoryOnly'
