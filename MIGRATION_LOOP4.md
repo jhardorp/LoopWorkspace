@@ -115,15 +115,21 @@ Simulator entitlements were empty; the app identified itself as
 | Effective signed entitlement keys | application identifier, team identifier, beta reports, get-task-allow; no HealthKit, app groups or shared keychain |
 | IPA SHA-256 | `888f37757cd83537228018437d1bfa2a78e6da5660cddd8d17f99959cd8d3a55` |
 | Candidate artifact | [12346108397](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857/artifacts/12346108397), ZIP 22,688,042 bytes; expires **2026-10-28 12:39:11 UTC** |
-| App Store Connect record | **Still required**: API creation did not succeed; no record was found in this run |
-| Upload / physical-device installation / deployment | **None** |
+| App Store Connect record | Initially absent; the owner-created empty record was subsequently corrected and verified for the separate ID |
+| Upload / physical-device installation / deployment | Separate IPA accepted by Apple at **2026-10-21 15:42:17 UTC**; no physical install or production deployment |
 
 The candidate contains `LoopAIPhotoTest.ipa`, `SandboxCandidate.json` and
 `AppRecordStatus.json`. Its signing uses the existing certificate and a profile
 only for the new identifier; production profiles, the signing repository and root
 signing configuration were not changed. The archive is not directly installable.
-Create the separate App Store Connect record using the fields in the test-app
-guide; a future TestFlight upload still requires explicit approval.
+The owner explicitly approved uploading this separate app. The corrected Apple
+record is app ID **6825358390**. [Upload run 39627647246](https://github.com/jhardorp/LoopWorkspace/actions/runs/39627647246)
+**passed** and Apple accepted the existing IPA, without rebuilding; source and
+signature/hash/isolation checks passed again before transfer. At **16:02:26 UTC**,
+Apple processing remained `AWAITING_APPLE_RECORD`; upload acceptance does not
+establish internal-test readiness. [Evidence artifact 12358982603](https://github.com/jhardorp/LoopWorkspace/actions/runs/39627647246/artifacts/12358982603)
+retains the fresh verification and upload status. External distribution was
+disabled, tester groups were unchanged and no physical installation occurred.
 
 Application, UI, support and dependency source are unchanged from `7018ca0`, which
 passed the 90 normal migration regressions above; subsequent changes affect only
@@ -143,9 +149,9 @@ for those packaging corrections.
 
 This mode tests photo analysis, refinement and reviewed-value transfer into the
 new editor alongside the working app. It does not validate the real bolus screen,
-the production data upgrade or clinical behavior. A future upload/installation
-still needs explicit approval under the migration requirements. Independent
-validation remains pending.
+the production data upgrade or clinical behavior. The separate upload was explicitly
+authorized and completed as recorded above; physical installation has not occurred.
+Independent validation remains pending.
 
 ### Earlier signed migration candidate — 2026-10-21
 

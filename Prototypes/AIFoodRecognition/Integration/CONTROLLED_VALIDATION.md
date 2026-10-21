@@ -33,11 +33,22 @@ source `7018ca0f8766db40594a327111d386644730ffaf`. Only the separate Fastlane wr
 changed between that source and the final candidate; runtime sources and all
 upstream pins are identical. Combined coverage is **90 existing + 11 new checks**.
 
-The separate identifier/profile exists and uses the existing certificate. The
-App Store Connect app-record creation attempt did not succeed with the API
-connection; that manual setup remains, using [these exact fields](SideBySide/README.md#remaining-apple-app-record-setup).
-Nothing was uploaded to TestFlight, installed on a physical device, deployed or
-merged. The App Store IPA is not directly installable.
+The separate identifier/profile uses the existing certificate. The owner explicitly
+authorized the isolated app upload. The newly created empty Apple app record was
+corrected from a widget-extension ID to `com.jhardorp.loopaiphototest`; a fresh
+read and a repeat check confirmed the correction without changing developer
+identifiers, signing or the production app record.
+
+**Apple accepted the existing Loop AI Test 0.1.0 (4) IPA at 2026-10-21 15:42:17 UTC**
+in [successful run 39627647246](https://github.com/jhardorp/LoopWorkspace/actions/runs/39627647246),
+wrapper `9e1de9e42cddcc37b2d19b649e410131f0c739b5`. Hash/signature/isolation were
+reverified before upload; the binary was not rebuilt. At **16:02:26 UTC**, after
+20 minutes, status was still `AWAITING_APPLE_RECORD`, with `upload_accepted: true`.
+**Apple processing and internal-test readiness remain unconfirmed.**
+[Evidence artifact 12358982603](https://github.com/jhardorp/LoopWorkspace/actions/runs/39627647246/artifacts/12358982603)
+contains effective-product and upload status JSON. External distribution was
+disabled and tester groups were unchanged. No physical install, production
+deployment or merge occurred. See the [full upload result](SideBySide/README.md#approved-upload-result--2026-10-21).
 
 The isolated app starts the real migrated carbohydrate editor and the same AI
 module. It uses a memory-only test destination instead of the real bolus screen,

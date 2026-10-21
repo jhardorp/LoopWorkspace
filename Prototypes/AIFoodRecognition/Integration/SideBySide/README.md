@@ -143,10 +143,37 @@ the correction helper now reads the known record ID with bounded retries.
 Registered production/widget identifiers, signing profiles, app records for the
 working Loop and the installed app were not changed.
 
-The already authorized upload of the same **0.1.0 (4)** signed IPA is being retried.
+The authorized upload of the same **0.1.0 (4)** signed IPA subsequently succeeded, as recorded below.
 The upload-only job uses the documented **macos-15-intel** runner and the same
 **Xcode 26.3 (17C529)** after the default macOS runner queue stalled. No binary is
 rebuilt. The upload job's `UploadStatus.json` records the actual final outcome.
+
+## Approved upload result — 2026-10-21
+
+**Apple accepted Loop AI Test 0.1.0 (4)** at **15:42:17 UTC** in
+[successful run 39627647246](https://github.com/jhardorp/LoopWorkspace/actions/runs/39627647246),
+wrapper source `9e1de9e42cddcc37b2d19b649e410131f0c739b5`. It uploaded the existing
+signed IPA from `8af1328f54fa72807c3fe314d82f67cf488603a1`, without rebuilding.
+The exact IPA hash, signature, source, identity and isolation were reverified at
+**15:39:49 UTC** before upload. Its SHA-256 remains
+`888f37757cd83537228018437d1bfa2a78e6da5660cddd8d17f99959cd8d3a55`.
+
+Apple app ID: **6825358390**; bundle: `com.jhardorp.loopaiphototest`.
+The corrected **Loop AI Test jhardorp** record now uses the expected bundle ID.
+After 20 minutes of polling, the final check at **16:02:26 UTC** still returned
+`upload_accepted: true`, `processing_state: AWAITING_APPLE_RECORD`. No processed
+build ID or internal-testing readiness was returned. Workflow success establishes
+upload acceptance, **not** completed Apple processing or installation readiness.
+Do not reupload the same build solely because it has not appeared yet.
+
+[Evidence artifact 12358982603](https://github.com/jhardorp/LoopWorkspace/actions/runs/39627647246/artifacts/12358982603)
+contains `VerifiedUpload.json` and `UploadStatus.json`, retained until
+**2026-11-04 16:02:28 UTC**. The next Apple status is visible at
+[the separate app's TestFlight page](https://appstoreconnect.apple.com/apps/6825358390/testflight/ios).
+External distribution was disabled; tester groups were not changed. No physical
+installation, production deployment, merge, certificate/profile renewal or backend
+change occurred. The working Loop remains untouched. Independent/manual safety
+validation remains pending; this is an isolated AI interface test app.
 
 ## On-phone acceptance after approved distribution
 
