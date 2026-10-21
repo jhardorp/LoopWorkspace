@@ -179,6 +179,109 @@ jobs:
             ${{ runner.temp }}/LoopAISandboxCandidate/AppRecordStatus.json
           if-no-files-found: error
           retention-days: 7
+  full_loop_validate:
+    name: Validate the separate full Loop main app
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      (contains(github.event.head_commit.message, '[full-loop-candidate]') ||
+       contains(github.event.head_commit.message, '[full-loop-archive]'))
+    runs-on: macos-15
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Select pinned Xcode and verify protected sources
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/verify_product_test.py
+          swift test --package-path Prototypes/AIFoodRecognition
+      - name: Install pinned project tools and check syntax
+        run: |
+          bundle install
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/prepare.rb
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/fastlane/Fastfile
+          python3 -m py_compile Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/*.py
+      - name: Generate the full main app with separate identity and storage
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/prepare.rb
+          swift Prototypes/AIFoodRecognition/Integration/SideBySide/make_icon.swift Loop/Loop/MealPhotoFullTestAssets.xcassets
+      - name: Build the full app unsigned for Simulator
+        run: >-
+          bash Prototypes/AIFoodRecognition/Integration/build_simulator.sh "$RUNNER_TEMP/FullLoopUnsigned.log"
+          -workspace LoopWorkspace.xcworkspace -scheme LoopNextAI
+          -destination 'generic/platform=iOS Simulator' -onlyUsePackageVersionsFromResolvedFile
+          -derivedDataPath "$RUNNER_TEMP/FullLoop"
+          MAIN_APP_BUNDLE_IDENTIFIER=com.jhardorp.loopaiphototest
+          APP_GROUP_IDENTIFIER=group.com.jhardorp.loopaiphototest
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-
+          CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= build
+      - name: Package normal full Simulator startup with ad-hoc signing
+        run: >-
+          bash Prototypes/AIFoodRecognition/Integration/build_simulator.sh "$RUNNER_TEMP/FullLoopSigning.log"
+          -workspace LoopWorkspace.xcworkspace -scheme LoopNextAI
+          -destination 'generic/platform=iOS Simulator' -onlyUsePackageVersionsFromResolvedFile
+          -derivedDataPath "$RUNNER_TEMP/FullLoop"
+          MAIN_APP_BUNDLE_IDENTIFIER=com.jhardorp.loopaiphototest
+          APP_GROUP_IDENTIFIER=group.com.jhardorp.loopaiphototest
+          CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-
+          CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= build
+      - name: Verify full product identity, entitlements and native plugins
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/verify_product.py
+          --app "$RUNNER_TEMP/FullLoop/Build/Products/Debug-iphonesimulator/Loop.app"
+          --source "$GITHUB_SHA" --record "$RUNNER_TEMP/FullLoopProduct.json"
+      - name: Probe normal full-app startup in a disposable Simulator
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/probe_startup.py \
+            --app "$RUNNER_TEMP/FullLoop/Build/Products/Debug-iphonesimulator/Loop.app" \
+            --output "$RUNNER_TEMP/FullLoopStartup" > "$RUNNER_TEMP/FullLoopStartup.log" 2>&1 || {
+              cat "$RUNNER_TEMP/FullLoopStartup.log"
+              exit 1
+            }
+          cat "$RUNNER_TEMP/FullLoopStartup.log"
+      - name: Require successful native adapter and unchanged backend regressions
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const {data: run} = await github.rest.actions.getWorkflowRun({owner, repo, run_id: 39648420016});
+            if (run.conclusion !== 'success' || run.head_sha !== '3579b17eaf5d260cdc755130dfb24b280984ae37') {
+              throw new Error('The pinned normal full-app regression run must pass before this candidate is accepted.');
+            }
+      - name: Verify only candidate packaging differs from the validated normal app
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          paths = subprocess.check_output(['git', 'diff', '--name-only', '3579b17eaf5d260cdc755130dfb24b280984ae37', 'HEAD'], text=True).splitlines()
+          allowed = ('Prototypes/AIFoodRecognition/Integration/SideBySide/',)
+          assert all(path.startswith(allowed) or path == '.github/workflows/loop_ai_sandbox.yml' for path in paths), paths
+          PY
+      - name: Retain full-app validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-next-ai-full-validation-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/FullLoop*.log
+            ${{ runner.temp }}/FullLoopProduct.json
+            ${{ runner.temp }}/FullLoopStartup
+          retention-days: 14
+      - name: Clean up the disposable full-app Simulator
+        if: always()
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/probe_startup.py
+          --cleanup-only --output "$RUNNER_TEMP/FullLoopStartup"
   full_loop_setup:
     name: Prepare only the separate full-Loop identifier
     if: >-

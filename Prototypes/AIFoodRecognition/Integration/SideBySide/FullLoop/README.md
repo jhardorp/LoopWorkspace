@@ -29,3 +29,18 @@ without private portal endpoints. It does not sign, upload, issue/revoke any
 certificate or alter a production identifier/profile. Website setup is recorded
 if the API does not expose app groups. An unsigned full-package build and startup
 check must precede the separately identified signed archive.
+
+On 2026-10-21, setup run [39649825892](https://github.com/jhardorp/LoopWorkspace/actions/runs/39649825892)
+enabled the test ID's App Groups, HealthKit, push, Siri and NFC capabilities.
+Production was read only. Apple's public `/v1/appGroups` endpoint returned 404
+(`NOT_FOUND`, undefined resource type), so the owner must register
+`group.com.jhardorp.loopaiphototest` in Developer Portal and associate only the
+test ID before signing. No archive or upload occurred in that setup run.
+
+The full-package validation generates a `LoopNextAI` workspace scheme in the
+disposable CI checkout, preserving normal device/service plugins and all normal
+main-app Swift files. Six package regression cases reject production identity,
+shared groups/keychains, wrong source, a sandbox substitution, missing onboarding
+and companion installation. The signed Simulator product is checked before a
+15-second normal-startup probe. Acceptance also requires the pinned normal-app
+90-check regression run to pass; no backend is deployed.
