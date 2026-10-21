@@ -68,11 +68,16 @@ platform :ios do
     update_code_signing_settings(path: project, use_automatic_signing: false, team_id: team,
                                 code_sign_identity: certificate_name, targets: ['LoopCore', 'LoopCore-watchOS', 'LoopUI'])
     artifacts = File.join(ENV.fetch('RUNNER_TEMP'), 'LoopAISandboxCandidate')
+    # Read-only certificate import with profiles skipped leaves a nil production
+    # profile in match's lane output. Gym merges that output unless it is reset.
+    # The sandbox has exactly one signable app and no companion extensions.
+    profile_mapping = {identity => profile.fetch('Name')}
+    Actions.lane_context[SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING] = profile_mapping
     gym(workspace: File.join(root, 'LoopWorkspace.xcworkspace'), scheme: 'LoopAIPhotoTest',
         configuration: 'Release', destination: 'generic/platform=iOS',
         xcargs: "-onlyUsePackageVersionsFromResolvedFile MAIN_APP_BUNDLE_IDENTIFIER=#{identity}",
-        export_method: 'app-store', export_team_id: team,
-        export_options: {signingStyle: 'manual', provisioningProfiles: {identity => profile.fetch('Name')}},
+        export_method: 'app-store', export_team_id: team, skip_profile_detection: true,
+        export_options: {signingStyle: 'manual', provisioningProfiles: profile_mapping},
         output_directory: artifacts, output_name: 'LoopAIPhotoTest.ipa',
         buildlog_path: File.join(artifacts, 'logs'))
     app_record = Spaceship::ConnectAPI::App.find(identity)
