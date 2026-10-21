@@ -58,6 +58,33 @@ Six parser regression cases cover XML/binary plists, universal architecture
 agreement, truncated/missing sections, conflicting signatures and device-mode
 separation, in addition to the six package cases.
 
+The compiled Simulator package from source
+`94ffb564c891ae5e3355c250623dff4833a51022` is retained as artifact **12384444023**
+from run **39676604275**. Both unsigned and ad-hoc builds succeeded. Its next
+check exposed an incorrect verifier assumption: the pinned onboarding/support
+frameworks identify themselves using `com.loopkit.Loop.OnboardingIdentifier` and
+`com.loopkit.Loop.SupportIdentifier`; their upstream plists omit the optional
+`NSPrincipalClass`. Verification now requires the correct semantic identifiers
+and actual framework executables. Eight package cases plus six Mach-O cases
+cover these constraints.
+
+`full_loop_recheck` verifies the exact retained artifact ID/digest and original
+successful build steps, requires that all application sources, native overlay,
+dependency pins and the app generator match that compiled source, then checks
+its actual signature/entitlements and starts that same binary in a disposable
+Simulator. Only verification/automation/docs may differ. The resulting record
+separates compiled-runtime source from verification source. The archive job
+depends on that recheck, project preflight and a current positive private-group
+profile check. The exported IPA retains both source values and its exact hash.
+This avoids recompilation when correcting verification tools while preserving
+source and artifact provenance. It does not replace independent clinical validation.
+
+The current-group check uses the existing certificate already associated with
+the test app and creates a distinctly named metadata-only profile through the
+Apple API. It neither imports a private key nor renews an archive profile. CMS
+content is decoded after signature verification and only the private group list
+and readiness metadata are logged. A missing group stops the archive job.
+
 The distinct `archive_candidate` lane imports the existing certificate/key with
 read-only Match and skips production profile downloads. It can create/renew only
 the test ID's `Loop Next AI AppStore` profile. Before compiling, it requires that

@@ -30,7 +30,12 @@ class FullProductTests(unittest.TestCase):
         for name in ('LoopOnboardingPlugin', 'LoopSupportPlugin'):
             plugin = self.app / 'Frameworks' / (name + '.framework')
             plugin.mkdir(parents=True)
-            (plugin / 'Info.plist').write_bytes(plistlib.dumps({'NSPrincipalClass': name + '.Plugin'}))
+            identifier = name.removesuffix('Plugin')
+            kind = 'Onboarding' if identifier == 'LoopOnboarding' else 'Support'
+            (plugin / 'Info.plist').write_bytes(plistlib.dumps({
+                'CFBundleExecutable': name, 'com.loopkit.Loop.' + kind + 'Identifier': identifier,
+            }))
+            (plugin / name).write_bytes(b'compiled native module')
 
     def check(self, info=None, entitlements=None):
         (self.app / 'Info.plist').write_bytes(plistlib.dumps(info or self.info))
@@ -59,6 +64,19 @@ class FullProductTests(unittest.TestCase):
 
     def test_missing_native_onboarding_is_rejected(self):
         (self.app / 'Frameworks/LoopOnboardingPlugin.framework/Info.plist').unlink()
+        with self.assertRaises(AssertionError):
+            self.check()
+
+    def test_wrong_native_plugin_identifier_is_rejected(self):
+        path = self.app / 'Frameworks/LoopOnboardingPlugin.framework/Info.plist'
+        metadata = plistlib.loads(path.read_bytes())
+        metadata['com.loopkit.Loop.OnboardingIdentifier'] = 'UnrelatedModule'
+        path.write_bytes(plistlib.dumps(metadata))
+        with self.assertRaises(AssertionError):
+            self.check()
+
+    def test_missing_native_plugin_executable_is_rejected(self):
+        (self.app / 'Frameworks/LoopSupportPlugin.framework/LoopSupportPlugin').unlink()
         with self.assertRaises(AssertionError):
             self.check()
 

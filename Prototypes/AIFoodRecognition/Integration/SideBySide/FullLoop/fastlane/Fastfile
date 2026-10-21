@@ -38,6 +38,11 @@ platform :ios do
     profile = Spaceship::ConnectAPI::Profile.create(name: name, profile_type: 'IOS_APP_STORE',
                                                    bundle_id_id: bundle.id, certificate_ids: certificate_ids)
     cms = OpenSSL::PKCS7.new(Base64.strict_decode64(profile.profile_content))
+    # OpenSSL exposes PKCS#7 content after verify. This metadata arrives over
+    # Apple's authenticated API; verify the CMS signature without importing a
+    # new root into the host trust store. IPA signature checks remain separate.
+    UI.user_error!('Apple inspection profile CMS signature could not be decoded') unless
+      cms.verify([], OpenSSL::X509::Store.new, nil, OpenSSL::PKCS7::NOVERIFY)
     UI.user_error!('Apple returned an empty inspection profile payload') if cms.data.to_s.empty?
     parsed = Tempfile.create(['LoopNextAIGroupProfile', '.plist']) do |file|
       file.write(cms.data)
@@ -74,6 +79,7 @@ platform :ios do
       ENV.fetch('FULL_VALIDATED_SOURCE') == ENV.fetch('GITHUB_SHA') &&
       candidate.fetch('validation_run') == ENV.fetch('FULL_VALIDATED_RUN').to_i &&
       ENV.fetch('FULL_VALIDATED_RUN') == ENV.fetch('GITHUB_RUN_ID') &&
+      candidate.fetch('runtime_source') == ENV.fetch('FULL_RUNTIME_SOURCE') &&
       candidate.fetch('version') == '3.15.2' && candidate.fetch('build') == ENV.fetch('GITHUB_RUN_NUMBER') &&
       candidate.fetch('ipa_sha256') == Digest::SHA256.file(ipa).hexdigest
     api_key = app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),

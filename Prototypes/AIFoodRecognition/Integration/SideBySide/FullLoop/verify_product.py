@@ -44,10 +44,20 @@ def verify(app, entitlements, source):
     assert not list(app.rglob('*.appex')), 'Companion extension bundled'
     assert not (app / 'Watch').exists(), 'Watch app bundled'
     # Upstream copy-plugins.sh renames .loopplugin products to frameworks.
-    plugins = [path.parent.name for path in (app / 'Frameworks').glob('*.framework/Info.plist')
-               if plistlib.loads(path.read_bytes()).get('NSPrincipalClass')]
-    assert 'LoopOnboardingPlugin.framework' in plugins, 'Native onboarding plugin missing'
-    assert 'LoopSupportPlugin.framework' in plugins, 'Native support plugin missing'
+    # These pinned upstream modules declare their semantic identifiers and use
+    # Bundle's default principal class; NSPrincipalClass is intentionally absent.
+    modules = {
+        'LoopOnboardingPlugin': ('com.loopkit.Loop.OnboardingIdentifier', 'LoopOnboarding'),
+        'LoopSupportPlugin': ('com.loopkit.Loop.SupportIdentifier', 'LoopSupport'),
+    }
+    for name, (key, identifier) in modules.items():
+        framework = app / 'Frameworks' / (name + '.framework')
+        metadata = framework / 'Info.plist'
+        assert metadata.is_file(), f'Native module missing: {name}'
+        values = plistlib.loads(metadata.read_bytes())
+        assert values.get(key) == identifier, f'Native module identifier mismatch: {name}'
+        executable = values.get('CFBundleExecutable', '')
+        assert executable and Path(executable).name == executable and (framework / executable).is_file(), f'Native module executable missing: {name}'
     assert (app / info['CFBundleExecutable']).is_file(), 'Executable missing'
     return info
 

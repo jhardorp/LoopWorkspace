@@ -28,6 +28,7 @@ if __name__ == '__main__':
         data['xcode'] = subprocess.check_output(['xcodebuild', '-version'], text=True).strip()
         data['validation_source'] = os.environ['FULL_VALIDATED_SOURCE']
         data['validation_run'] = int(os.environ['FULL_VALIDATED_RUN'])
+        data['runtime_source'] = os.environ['FULL_RUNTIME_SOURCE']
         data['uploaded'] = False
         data['installed'] = False
         record.write_text(json.dumps(data, indent=2) + '\n')
