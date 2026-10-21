@@ -1,0 +1,176 @@
+name: Separate Loop AI test app
+on:
+  push:
+    branches: ['migration/loop4-ai-photo']
+    paths:
+      - 'Prototypes/AIFoodRecognition/Integration/SideBySide/**'
+      - '.github/workflows/loop_ai_sandbox.yml'
+  workflow_dispatch:
+    inputs:
+      prepare_signed_sandbox:
+        type: boolean
+        description: Prepare only the separately identified test-app archive; never upload or install
+        required: true
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: loop-ai-separate-test-app
+  cancel-in-progress: true
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/migration/loop4-ai-photo'
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Select pinned Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+      - name: Verify preserved production and test-only support
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/verify_product_test.py
+          swift test --package-path Prototypes/AIFoodRecognition/Integration/SideBySide/Support
+      - name: Install pinned project tools and validate generator syntax
+        run: |
+          bundle install
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/prepare.rb
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/fastlane/Fastfile
+      - name: Generate the separate native editor test app
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/SideBySide/prepare.rb
+          swift Prototypes/AIFoodRecognition/Integration/SideBySide/make_icon.swift Loop/Loop/MealPhotoSandboxAssets.xcassets
+      - name: Build the separate app unsigned
+        run: >-
+          bash Prototypes/AIFoodRecognition/Integration/build_simulator.sh "$RUNNER_TEMP/LoopAISandboxUnsigned.log"
+          -workspace LoopWorkspace.xcworkspace -scheme LoopAIPhotoTest
+          -destination 'generic/platform=iOS Simulator' -onlyUsePackageVersionsFromResolvedFile
+          -derivedDataPath "$RUNNER_TEMP/LoopAISandbox"
+          MAIN_APP_BUNDLE_IDENTIFIER=com.jhardorp.loopaiphototest
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-
+          CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= build
+      - name: Package the Simulator app with Xcode ad-hoc signing
+        run: >-
+          bash Prototypes/AIFoodRecognition/Integration/build_simulator.sh "$RUNNER_TEMP/LoopAISandboxSigning.log"
+          -workspace LoopWorkspace.xcworkspace -scheme LoopAIPhotoTest
+          -destination 'generic/platform=iOS Simulator' -onlyUsePackageVersionsFromResolvedFile
+          -derivedDataPath "$RUNNER_TEMP/LoopAISandbox"
+          MAIN_APP_BUNDLE_IDENTIFIER=com.jhardorp.loopaiphototest
+          CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-
+          CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= build
+      - name: Verify effective Simulator identity and isolation
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/verify_product.py
+          --app "$RUNNER_TEMP/LoopAISandbox/Build/Products/Debug-iphonesimulator/Loop.app"
+          --source "$GITHUB_SHA" --record "$RUNNER_TEMP/LoopAISandboxIsolation.json"
+      - name: Exercise native editor cancellation and test-only saving
+        run: |
+          device=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')
+          bash Prototypes/AIFoodRecognition/Integration/build_simulator.sh "$RUNNER_TEMP/LoopAISandboxUITests.log" \
+            -workspace LoopWorkspace.xcworkspace -scheme LoopAIPhotoTest \
+            -destination "platform=iOS Simulator,id=$device" -onlyUsePackageVersionsFromResolvedFile \
+            -derivedDataPath "$RUNNER_TEMP/LoopAISandbox" \
+            -resultBundlePath "$RUNNER_TEMP/LoopAISandboxUITests.xcresult" \
+            -only-testing:LoopAIPhotoSandboxUITests/SandboxUITests \
+            MAIN_APP_BUNDLE_IDENTIFIER=com.jhardorp.loopaiphototest \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= test
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          log = (Path(os.environ['RUNNER_TEMP']) / 'LoopAISandboxUITests.log').read_text()
+          passed = set(re.findall(r"SandboxUITests (test\w+)\]' passed", log))
+          if len(passed) != 2:
+              raise SystemExit(f'Expected two actual UI cases, found {len(passed)}')
+          PY
+      - name: Retain isolation and UI test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-ai-sandbox-validation-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/LoopAISandbox*.log
+            ${{ runner.temp }}/LoopAISandboxIsolation.json
+            ${{ runner.temp }}/LoopAISandboxUITests.xcresult
+          retention-days: 14
+  archive:
+    name: Prepare separate signed app without publishing
+    needs: validate
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.prepare_signed_sandbox) ||
+       (github.event_name == 'push' && contains(github.event.head_commit.message, '[sandbox-candidate]')))
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Select pinned Xcode and verify sources
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+          bundle install
+      - name: Generate the same isolated app from the validated source
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/SideBySide/prepare.rb
+          swift Prototypes/AIFoodRecognition/Integration/SideBySide/make_icon.swift Loop/Loop/MealPhotoSandboxAssets.xcassets
+      - name: Preserve the personal AI login in this separate app
+        env:
+          FOOD_TESTER_ACCESS_CODE: ${{ secrets.FOOD_TESTER_ACCESS_CODE }}
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review.py
+          --plist Loop/Loop/Info.plist
+      - name: Sign only the new app using the existing certificate
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          TEAMID: ${{ secrets.TEAMID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios prepare_side_by_side
+      - name: Verify exported IPA isolation and record its hash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess, tempfile, zipfile
+          from pathlib import Path
+          artifacts = Path(os.environ['RUNNER_TEMP']) / 'LoopAISandboxCandidate'
+          ipa = artifacts / 'LoopAIPhotoTest.ipa'
+          with tempfile.TemporaryDirectory() as temp:
+              with zipfile.ZipFile(ipa) as archive:
+                  archive.extractall(temp)
+              record = artifacts / 'SandboxCandidate.json'
+              subprocess.run(['python3', 'Prototypes/AIFoodRecognition/Integration/SideBySide/verify_product.py',
+                              '--app', str(Path(temp) / 'Payload/Loop.app'), '--source', os.environ['GITHUB_SHA'],
+                              '--record', str(record)], check=True)
+              data = json.loads(record.read_text())
+              data['ipa_sha256'] = hashlib.file_digest(ipa.open('rb'), 'sha256').hexdigest()
+              data['xcode'] = subprocess.check_output(['xcodebuild', '-version'], text=True).strip()
+              record.write_text(json.dumps(data, indent=2) + '\n')
+              print(json.dumps(data))
+          PY
+      - name: Retain the separate candidate for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-ai-separate-candidate-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/LoopAISandboxCandidate/LoopAIPhotoTest.ipa
+            ${{ runner.temp }}/LoopAISandboxCandidate/SandboxCandidate.json
+            ${{ runner.temp }}/LoopAISandboxCandidate/AppRecordStatus.json
+          if-no-files-found: error
+          retention-days: 7

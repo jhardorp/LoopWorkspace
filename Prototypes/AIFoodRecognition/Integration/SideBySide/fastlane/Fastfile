@@ -1,0 +1,79 @@
+require 'base64'
+require 'fileutils'
+require 'json'
+require 'openssl'
+
+default_platform(:ios)
+opt_out_usage
+
+platform :ios do
+  desc 'Prepare only the separately identified AI test app; never upload or install'
+  lane :prepare_side_by_side do
+    UI.user_error!('Migration Actions branch required') unless
+      ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo'
+    root = ENV.fetch('GITHUB_WORKSPACE')
+    identity = 'com.jhardorp.loopaiphototest'
+    actual = IO.popen(['git', '-C', root, 'rev-parse', 'HEAD'], &:read).strip
+    UI.user_error!('Archive source differs from validated source') unless actual == ENV.fetch('GITHUB_SHA')
+    main = File.read(File.join(root, 'Loop/Loop/main.swift'))
+    UI.user_error!('Separate application entry point required') unless
+      main.include?('NSStringFromClass(AIPhotoSandboxAppDelegate.self)') && !main.include?('NSStringFromClass(AppDelegate.self)')
+    team = ENV.fetch('TEAMID')
+    UI.user_error!('Invalid Apple team') unless team.match?(/\A[A-Z0-9]{10}\z/)
+    api_key = app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),
+                                      issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
+                                      key_content: ENV.fetch('FASTLANE_KEY'))
+    setup_ci
+    authorization = Base64.strict_encode64("#{ENV.fetch('GITHUB_REPOSITORY_OWNER')}:#{ENV.fetch('GH_PAT')}")
+    puts "::add-mask::#{authorization}"
+    signing = File.join(ENV.fetch('RUNNER_TEMP'), 'LoopAISandboxSigning')
+    FileUtils.mkdir_p(signing)
+    # Fetch the existing valid certificate and key read-only. No production profile, cert,
+    # production app record or signing-repository file is created or renewed.
+    match(type: 'appstore', api_key: api_key, team_id: team,
+          git_url: 'https://github.com/jhardorp/Match-Secrets.git',
+          git_basic_authorization: authorization,
+          app_identifier: ["com.#{team}.loopkit.Loop"],
+          readonly: true, skip_provisioning_profiles: true, output_path: signing)
+    certificates = Dir[File.join(signing, '*.cer')]
+    UI.user_error!('Expected one existing distribution certificate') unless certificates.length == 1
+    certificate_id = File.basename(certificates.first, '.cer')
+    certificate = OpenSSL::X509::Certificate.new(File.binread(certificates.first))
+    UI.user_error!('Existing distribution certificate is expired') unless certificate.not_after > Time.now
+
+    bundle = Spaceship::ConnectAPI::BundleId.find(identity)
+    bundle ||= Spaceship::ConnectAPI::BundleId.create(name: 'Loop AI Test', identifier: identity, platform: 'IOS')
+    UI.user_error!('Wrong separate bundle identifier') unless bundle.identifier == identity
+    # Sigh can create/download this app's profile using the selected existing
+    # certificate. It cannot issue certificates or modify the signing Git repo.
+    profile_path = get_provisioning_profile(api_key: api_key, team_id: team,
+                                           app_identifier: identity, cert_id: certificate_id,
+                                           provisioning_name: 'Loop AI Test AppStore',
+                                           output_path: signing, filename: 'LoopAIPhotoTest.mobileprovision',
+                                           force: false)
+    profile = FastlaneCore::ProvisioningProfile.parse(profile_path)
+    UI.user_error!('Profile does not belong to the separate app') unless
+      profile.fetch('Entitlements').fetch('application-identifier').end_with?('.' + identity)
+    project = File.join(root, 'Loop/Loop.xcodeproj')
+    update_project_team(path: project, teamid: team)
+    update_code_signing_settings(path: project, use_automatic_signing: false, team_id: team,
+                                bundle_identifier: identity, code_sign_identity: 'Apple Distribution',
+                                profile_name: profile.fetch('Name'), targets: ['Loop'])
+    update_code_signing_settings(path: project, use_automatic_signing: false, team_id: team,
+                                code_sign_identity: 'Apple Distribution', targets: ['LoopCore', 'LoopCore-watchOS', 'LoopUI'])
+    artifacts = File.join(ENV.fetch('RUNNER_TEMP'), 'LoopAISandboxCandidate')
+    gym(workspace: File.join(root, 'LoopWorkspace.xcworkspace'), scheme: 'LoopAIPhotoTest',
+        configuration: 'Release', destination: 'generic/platform=iOS',
+        xcargs: "-onlyUsePackageVersionsFromResolvedFile MAIN_APP_BUNDLE_IDENTIFIER=#{identity}",
+        export_method: 'app-store', export_team_id: team,
+        export_options: {signingStyle: 'manual', provisioningProfiles: {identity => profile.fetch('Name')}},
+        output_directory: artifacts, output_name: 'LoopAIPhotoTest.ipa',
+        buildlog_path: File.join(artifacts, 'logs'))
+    app_record = Spaceship::ConnectAPI::App.find(identity)
+    File.write(File.join(artifacts, 'AppRecordStatus.json'), JSON.pretty_generate({
+      bundle: identity, app_record_exists: !app_record.nil?, uploaded: false,
+      note: 'App Store Connect app record is required before a future explicitly approved TestFlight upload.'
+    }) + "\n")
+    UI.success('Separate Loop AI Test archive prepared. No TestFlight upload, device installation, production provisioning changes or deployment.')
+  end
+end
