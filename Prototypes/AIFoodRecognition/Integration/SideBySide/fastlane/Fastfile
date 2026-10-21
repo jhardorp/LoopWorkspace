@@ -37,6 +37,18 @@ platform :ios do
     end
     begin
       app = Spaceship::ConnectAPI::App.find(identity)
+      if app.nil?
+        # A Developer Portal identifier and an App Store Connect app record are
+        # separate objects. Report only related test-app records visible to this
+        # API connection so a wrong bundle ID can be distinguished from access.
+        visible = Spaceship::ConnectAPI::App.all
+        status[:app_record_visible] = false
+        status[:visible_app_count] = visible.length
+        status[:related_app_records] = visible.select do |record|
+          record.name.to_s.match?(/Loop.*AI|AI.*Test/i)
+        end.map { |record| {name: record.name, bundle: record.bundle_id} }
+        UI.message("Visible related test-app records: #{JSON.generate(status[:related_app_records])}")
+      end
       UI.user_error!('The separate Loop AI Test App Store Connect record is missing') unless app && app.bundle_id == identity
       status[:app_id] = app.id
       UI.message('The separate Loop AI Test app record is present.')
