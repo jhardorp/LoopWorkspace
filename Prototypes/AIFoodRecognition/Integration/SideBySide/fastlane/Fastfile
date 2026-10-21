@@ -62,6 +62,29 @@ platform :ios do
       developer_bundle_registered: !developer_bundle.nil?,
       related_app_records: related.map { |record| {name: record.name, bundle: record.bundle_id} }
     }))
+    if app
+      builds = Spaceship::ConnectAPI::Build.all(app_id: app.id).map do |build|
+        entry = {version: build.app_version, build: build.version, processing_state: build.processing_state}
+        unless build.build_beta_detail.nil?
+          entry[:ready_for_internal_testing] = build.ready_for_internal_testing?
+          entry[:missing_export_compliance] = build.missing_export_compliance?
+        end
+        entry
+      end
+      groups = app.get_beta_groups.select(&:is_internal_group)
+      UI.message('APPLE_TESTFLIGHT_CHECK: ' + JSON.generate({
+        bundle: identity, app_id: app.id, builds: builds, internal_group_count: groups.length,
+        checked_at: Time.now.utc.iso8601
+      }))
+      # Upload records remain useful when ingestion has not produced a Build yet.
+      uploads = Spaceship::ConnectAPI::BuildUpload.all(app_id: app.id, version: '0.1.0', build_number: '4')
+      UI.message('APPLE_UPLOAD_CHECK: ' + JSON.generate({
+        bundle: identity, uploads: uploads.map do |upload|
+          {version: upload.cf_build_short_version_string, build: upload.cf_build_version,
+           state: upload.state, uploaded_date: upload.uploaded_date}
+        end
+      }))
+    end
   end
 
   desc 'Upload only the exact isolated candidate explicitly approved by its owner'
