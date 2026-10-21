@@ -26,6 +26,9 @@ jobs:
       contains(github.event.head_commit.message, '[full-loop-profile-current]')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v5
         with:
@@ -34,6 +37,27 @@ jobs:
         with:
           ruby-version: '3.3'
           bundler-cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: loop-next-ai-simulator-94ffb564c891ae5e3355c250623dff4833a51022
+          github-token: ${{ github.token }}
+          run-id: 39676604275
+          path: ${{ runner.temp }}/FullLoopMetadataInput
+      - name: Inspect native plugin metadata in the retained compiled app
+        run: |
+          python3 - <<'PY'
+          import json, os, plistlib, zipfile
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'FullLoopMetadataInput/FullLoopSimulator.zip'
+          with zipfile.ZipFile(path) as archive:
+              for name in archive.namelist():
+                  if name.startswith('Loop.app/Frameworks/') and name.endswith('.framework/Info.plist'):
+                      info = plistlib.loads(archive.read(name))
+                      print('COMPILED_FRAMEWORK: ' + json.dumps({
+                          'path': name, 'principal_class': info.get('NSPrincipalClass'),
+                          'plugin_keys': {key: value for key, value in info.items() if 'Plugin' in key or 'Principal' in key}
+                      }))
+          PY
       - name: Read the current group with an independent test-only profile
         working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop
         env:

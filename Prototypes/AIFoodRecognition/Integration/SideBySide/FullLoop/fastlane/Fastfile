@@ -8,7 +8,7 @@ require 'shellwords'
 require 'xcodeproj'
 require 'digest'
 require 'time'
-require 'cfpropertylist'
+require 'tempfile'
 
 default_platform(:ios)
 opt_out_usage
@@ -38,7 +38,12 @@ platform :ios do
     profile = Spaceship::ConnectAPI::Profile.create(name: name, profile_type: 'IOS_APP_STORE',
                                                    bundle_id_id: bundle.id, certificate_ids: certificate_ids)
     cms = OpenSSL::PKCS7.new(Base64.strict_decode64(profile.profile_content))
-    parsed = CFPropertyList.native_types(CFPropertyList::List.new(data: cms.data).value)
+    UI.user_error!('Apple returned an empty inspection profile payload') if cms.data.to_s.empty?
+    parsed = Tempfile.create(['LoopNextAIGroupProfile', '.plist']) do |file|
+      file.write(cms.data)
+      file.flush
+      Xcodeproj::Plist.read_from_path(file.path)
+    end
     entitlements = parsed.fetch('Entitlements')
     UI.user_error!('Inspection profile identity mismatch') unless
       entitlements.fetch('application-identifier') == "#{team}.#{identity}" && parsed.fetch('TeamIdentifier') == [team]
