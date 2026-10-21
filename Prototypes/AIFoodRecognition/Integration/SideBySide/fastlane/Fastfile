@@ -9,9 +9,10 @@ default_platform(:ios)
 opt_out_usage
 
 platform :ios do
-  desc 'Create only the new isolated test-app record; never change other app records'
-  lane :create_app_record do
+  desc 'Correct only the empty user-created test record; preserve developer identifiers'
+  lane :repair_app_record do
     identity = 'com.jhardorp.loopaiphototest'
+    old_identity = 'com.279LYMG57A.loopkit.Loop.LoopWidgetExtension'
     UI.user_error!('Approved isolated migration app record required') unless
       ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo' &&
       ENV['APPROVED_SANDBOX_RECORD'] == identity
@@ -20,13 +21,23 @@ platform :ios do
                               key_content: ENV.fetch('FASTLANE_KEY'))
     app = Spaceship::ConnectAPI::App.find(identity)
     unless app
-      Spaceship::ConnectAPI::App.create(name: 'Loop AI Photo Test jhardorp', version_string: '0.1.0',
-                                       sku: 'loop-ai-photo-test-standalone', primary_locale: 'en-US',
-                                       bundle_id: identity, platforms: ['IOS'])
+      UI.user_error!('Separate developer identifier is missing') unless Spaceship::ConnectAPI::BundleId.find(identity)
+      candidates = Spaceship::ConnectAPI::App.all.select do |record|
+        record.name == 'Loop AI Test jhardorp' && record.bundle_id == old_identity
+      end
+      UI.user_error!('Expected exactly the empty test record identified in the visibility check') unless candidates.length == 1
+      candidate = candidates.first
+      UI.user_error!('Refusing to change any app record that has uploaded builds') unless
+        Spaceship::ConnectAPI::Build.all(app_id: candidate.id).empty?
+      # Change the App Store Connect test record only. This does not change the
+      # registered widget identifier, its signing profile, or the production app.
+      UI.message('The user-created test record has no builds; correcting only its bundle ID.')
+      candidate.update(attributes: {bundle_id: identity})
       app = Spaceship::ConnectAPI::App.find(identity)
+      UI.user_error!('Corrected record ID changed unexpectedly') unless app && app.id == candidate.id
     end
     UI.user_error!('The correct separate app record is still unavailable') unless app && app.bundle_id == identity
-    UI.success("The separate app record is ready: #{identity}. No other app record was changed; no upload occurred.")
+    UI.success("The separate app record is ready: #{identity}. No developer identifier, signing or installed app was changed; no upload occurred.")
   end
 
   desc 'Read-only visibility check; never create, sign, upload or distribute'

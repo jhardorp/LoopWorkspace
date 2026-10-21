@@ -15,7 +15,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ${{ (contains(github.event.head_commit.message, '[sandbox-access-check]') || contains(github.event.head_commit.message, '[sandbox-create-record]')) && 'loop-ai-app-record-check' || 'loop-ai-separate-test-app' }}
+  group: ${{ (contains(github.event.head_commit.message, '[sandbox-access-check]') || contains(github.event.head_commit.message, '[sandbox-repair-record]')) && 'loop-ai-app-record-check' || 'loop-ai-separate-test-app' }}
   cancel-in-progress: true
 jobs:
   validate:
@@ -23,7 +23,7 @@ jobs:
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
       !contains(github.event.head_commit.message, '[sandbox-upload-approved]') &&
       !contains(github.event.head_commit.message, '[sandbox-access-check]') &&
-      !contains(github.event.head_commit.message, '[sandbox-create-record]')
+      !contains(github.event.head_commit.message, '[sandbox-repair-record]')
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -184,7 +184,7 @@ jobs:
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
       github.event_name == 'push' &&
       (contains(github.event.head_commit.message, '[sandbox-access-check]') ||
-       contains(github.event.head_commit.message, '[sandbox-create-record]'))
+       contains(github.event.head_commit.message, '[sandbox-repair-record]'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -195,7 +195,7 @@ jobs:
         with:
           ruby-version: '3.3'
           bundler-cache: true
-      - name: Check the record or create only the approved separate app
+      - name: Check the record or correct only the empty separate app
         working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide
         env:
           BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
@@ -204,7 +204,7 @@ jobs:
           FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
           FASTLANE_SKIP_UPDATE_CHECK: 'true'
           FASTLANE_HIDE_CHANGELOG: 'true'
-          APPLE_APP_RECORD_ACTION: ${{ contains(github.event.head_commit.message, '[sandbox-create-record]') && 'create_app_record' || 'check_app_record' }}
+          APPLE_APP_RECORD_ACTION: ${{ contains(github.event.head_commit.message, '[sandbox-repair-record]') && 'repair_app_record' || 'check_app_record' }}
           APPROVED_SANDBOX_RECORD: com.jhardorp.loopaiphototest
         run: bundle exec fastlane ios "$APPLE_APP_RECORD_ACTION"
   upload_approved_candidate:
