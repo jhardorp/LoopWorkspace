@@ -37,10 +37,12 @@ Production was read only. Apple's public `/v1/appGroups` endpoint returned 404
 `group.com.jhardorp.loopaiphototest` in Developer Portal and associate only the
 test ID before signing. No archive or upload occurred in that setup run.
 
-The full native app also requires Time Sensitive Notifications. The test-ID setup
-enables this capability explicitly, including when the older production app's
-capability reference lacks it. This retains upstream notification entitlements
-and changes only the test identifier; production capabilities remain unchanged.
+The full native app also requires Time Sensitive Notifications. The older
+production reference lacks this capability, and Apple's public capability-create
+API rejects `TIME_SENSITIVE_NOTIFICATIONS` as an unsupported enum value. Enable
+**Time Sensitive Notifications** on the test App ID in Developer Portal and save.
+The archive verifies the entitlement in its fresh profile before compiling.
+Upstream notification entitlements and production capabilities remain unchanged.
 
 The full-package validation generates a `LoopNextAI` workspace scheme in the
 disposable CI checkout, preserving normal device/service plugins and all normal
@@ -114,6 +116,10 @@ Developer Portal setup required before this signing step can pass:
    `group.com.jhardorp.loopaiphototest`.
 2. Open the test App ID **`com.jhardorp.loopaiphototest`**, edit **App Groups**,
    select that group and save. Leave working Loop's identifier untouched.
+3. On that same test App ID, enable **Time Sensitive Notifications**, then save
+   and confirm. This capability is required by the pinned full upstream app;
+   it was absent from the first full archive profile and stopped that archive
+   before compilation. Apple's public API cannot enable it.
 
 After successful upload/processing, select the new **3.15.2** build on the same
 test app's [TestFlight page](https://appstoreconnect.apple.com/apps/6825358390/testflight/ios).

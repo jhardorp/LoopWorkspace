@@ -53,12 +53,15 @@ platform :ios do
     UI.user_error!('Inspection profile identity mismatch') unless
       entitlements.fetch('application-identifier') == "#{team}.#{identity}" && parsed.fetch('TeamIdentifier') == [team]
     groups = entitlements.fetch('com.apple.security.application-groups', [])
+    time_sensitive = entitlements['com.apple.developer.usernotifications.time-sensitive'] == true
     UI.message('CURRENT_TEST_GROUP: ' + JSON.generate({
       bundle: identity, expected_group: group, profile_groups: groups,
-      group_ready: groups == [group], checked_at: Time.now.utc.iso8601,
+      group_ready: groups == [group], time_sensitive_notifications: time_sensitive,
+      checked_at: Time.now.utc.iso8601,
       binary_signed: false, uploaded: false, production_modified: false
     }))
     UI.user_error!('The private App Group association is still absent from a fresh Apple profile') unless groups == [group]
+    UI.user_error!('Enable Time Sensitive Notifications for the separate test App ID in Developer Portal and save') unless time_sensitive
   end
 
   desc 'Upload only the verified full main-app candidate to the owner-approved separate slot'
@@ -216,6 +219,8 @@ platform :ios do
     UI.user_error!("Own App Group is missing from the profile. Register #{group} and associate only #{identity} in Developer Portal.") unless
       entitlements['com.apple.security.application-groups'] == [group]
     UI.user_error!('The full app HealthKit profile capability is missing') unless entitlements['com.apple.developer.healthkit'] == true
+    UI.user_error!('Enable Time Sensitive Notifications for com.jhardorp.loopaiphototest in Developer Portal and save the App ID') unless
+      entitlements['com.apple.developer.usernotifications.time-sensitive'] == true
     if ENV['FULL_PROFILE_CHECK_ONLY'] == 'true'
       UI.message('FULL_LOOP_PROFILE_CHECK: ' + JSON.generate({
         bundle: identity, app_group: entitlements['com.apple.security.application-groups'],
@@ -278,15 +283,10 @@ platform :ios do
       settings = capability.capability_type == 'APP_GROUPS' ? [] : (capability.settings || [])
       bundle.create_capability(capability.capability_type, settings: settings)
     end
-    # Pinned next-dev requires this entitlement even when the older production
-    # app's capability reference does not contain it. Enable only the test ID;
-    # preserve the native entitlement and leave production capabilities alone.
-    notification_capability = 'TIME_SENSITIVE_NOTIFICATIONS'
-    unless bundle.get_capabilities.any? { |capability| capability.capability_type == notification_capability }
-      bundle.create_capability(notification_capability, settings: [])
-    end
-    UI.user_error!('The separate app time-sensitive notification capability is missing') unless
-      bundle.get_capabilities.any? { |capability| capability.capability_type == notification_capability }
+    # The older production reference does not expose this next-dev entitlement.
+    # Apple's public capability-create API rejects TIME_SENSITIVE_NOTIFICATIONS;
+    # preserve the native entitlement and require Portal setup on the test ID.
+    UI.important('Enable Time Sensitive Notifications on com.jhardorp.loopaiphototest in Developer Portal. The archive checks a fresh profile before compiling.')
     # Inspect the documented App Store Connect resource namespace only. If the
     # API connection does not expose app groups, leave website setup explicit.
     uri = URI('https://api.appstoreconnect.apple.com/v1/appGroups')
