@@ -1,5 +1,4 @@
 """Reject packages that could replace working Loop or conceal missing native code."""
-import copy
 from pathlib import Path
 import plistlib
 import tempfile

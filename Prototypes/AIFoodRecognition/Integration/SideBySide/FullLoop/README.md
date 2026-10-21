@@ -44,3 +44,13 @@ shared groups/keychains, wrong source, a sandbox substitution, missing onboardin
 and companion installation. The signed Simulator product is checked before a
 15-second normal-startup probe. Acceptance also requires the pinned normal-app
 90-check regression run to pass; no backend is deployed.
+
+The distinct `archive_candidate` lane imports the existing certificate/key with
+read-only Match and skips production profile downloads. It can create/renew only
+the test ID's `Loop Next AI AppStore` profile. Before compiling, it requires that
+profile to contain exactly the private group and the full native HealthKit
+capability. It archives the native `LoopNextAI` scheme without an upload action.
+`record_candidate.py` verifies the exported identity, native plugins, effective
+entitlements and source; it records the IPA SHA-256 and successful validation run.
+The archive job rejects runtime or packaging-generator changes since that
+validation. A later upload must select the exact successful artifact explicitly.
