@@ -18,6 +18,74 @@ concurrency:
   group: ${{ (contains(github.event.head_commit.message, '[full-loop-launch]') || contains(github.event.head_commit.message, '[full-loop-release-retained]')) && 'loop-ai-full-launch' || (contains(github.event.head_commit.message, '[full-loop-prepared]') && 'loop-ai-full-preparation' || ((contains(github.event.head_commit.message, '[sandbox-access-check]') || contains(github.event.head_commit.message, '[sandbox-repair-record]')) && 'loop-ai-app-record-check' || 'loop-ai-separate-test-app')) }}
   cancel-in-progress: true
 jobs:
+  full_loop_preserve_retry_logs:
+    name: Preserve the first failed archive logs before the running retry retains its app
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[full-loop-preserve-retry-logs]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Require the exact small failed-attempt artifact
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {data: a} = await github.rest.actions.getArtifact({...context.repo, artifact_id: 12389665141});
+            if (a.name !== 'loop-next-ai-full-candidate-b2252d048821dff94db71aa06c9cc6c9b6cdf2d8' ||
+                a.workflow_run.id !== 39686356713 || a.size_in_bytes !== 4966 || a.expired ||
+                a.digest !== 'sha256:b09030592f0c4670205b324e57508d091e4e42b4d1ff8633167b1dfd57f37bf0') {
+              throw new Error('Unexpected old artifact; preserve it without deleting anything.');
+            }
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12389665141'
+          run-id: '39686356713'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/FirstArchiveFailure
+          merge-multiple: true
+      - name: Verify log-only contents and record a file manifest
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'FirstArchiveFailure'
+          files = [path for path in root.rglob('*') if path.is_file()]
+          assert files and all(path.suffix.lower() in ('.log', '.txt') for path in files), 'Not a log-only artifact'
+          manifest = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
+          (root / 'PreservedFileHashes.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          print('Preserving', len(files), 'failed-profile build log files; no app package.')
+          PY
+      - uses: actions/upload-artifact@v4
+        id: backup
+        with:
+          name: loop-next-ai-first-profile-failure-12389665141-${{ github.run_id }}
+          path: ${{ runner.temp }}/FirstArchiveFailure
+          if-no-files-found: error
+          retention-days: 14
+      - name: Release only the backed-up log artifact name for the active retry
+        uses: actions/github-script@v7
+        env:
+          BACKUP_ARTIFACT_ID: ${{ steps.backup.outputs.artifact-id }}
+        with:
+          script: |
+            const {data: backup} = await github.rest.actions.getArtifact({...context.repo, artifact_id: Number(process.env.BACKUP_ARTIFACT_ID)});
+            if (backup.workflow_run.id !== context.runId || backup.expired || backup.size_in_bytes <= 0 ||
+                backup.name !== 'loop-next-ai-first-profile-failure-12389665141-' + context.runId) throw new Error('Backup not verified');
+            const {data: jobs} = await github.rest.actions.listJobsForWorkflowRun({...context.repo, run_id: 39686356713, filter: 'latest', per_page: 100});
+            const active = jobs.jobs.find(job => job.id === 119546403149);
+            if (active?.status !== 'in_progress' || active.steps.some(step => step.name === 'Retain the separate full-app archive and signing evidence' && step.status !== 'pending')) {
+              throw new Error('Archive retention already started or retry ended; leave old artifact untouched.');
+            }
+            const {data: old} = await github.rest.actions.getArtifact({...context.repo, artifact_id: 12389665141});
+            if (old.workflow_run.id !== 39686356713 || old.size_in_bytes !== 4966 ||
+                old.digest !== 'sha256:b09030592f0c4670205b324e57508d091e4e42b4d1ff8633167b1dfd57f37bf0') throw new Error('Old artifact changed');
+            await github.rest.actions.deleteArtifact({...context.repo, artifact_id: 12389665141});
+            core.info('Failed-attempt logs preserved in artifact ' + backup.id + '; running retry can retain the signed candidate.');
   full_loop_current_group:
     name: Refresh the separate app's current App Group status
     if: >-
@@ -626,7 +694,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: loop-next-ai-full-candidate-${{ github.sha }}
+          name: loop-next-ai-full-candidate-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/LoopNextAICandidate
           if-no-files-found: warn
           retention-days: 7
