@@ -159,6 +159,15 @@ platform :ios do
     UI.user_error!("Own App Group is missing from the profile. Register #{group} and associate only #{identity} in Developer Portal.") unless
       entitlements['com.apple.security.application-groups'] == [group]
     UI.user_error!('The full app HealthKit profile capability is missing') unless entitlements['com.apple.developer.healthkit'] == true
+    if ENV['FULL_PROFILE_CHECK_ONLY'] == 'true'
+      UI.message('FULL_LOOP_PROFILE_CHECK: ' + JSON.generate({
+        bundle: identity, app_group: entitlements['com.apple.security.application-groups'],
+        healthkit: entitlements['com.apple.developer.healthkit'],
+        entitlement_keys: entitlements.keys.sort,
+        production_modified: false, signed: false, uploaded: false
+      }))
+      next
+    end
     project = File.join(root, 'Loop/Loop.xcodeproj')
     update_project_team(path: project, teamid: team)
     update_code_signing_settings(path: project, use_automatic_signing: false, team_id: team,
