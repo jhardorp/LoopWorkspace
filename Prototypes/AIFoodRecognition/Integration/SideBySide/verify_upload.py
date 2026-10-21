@@ -8,10 +8,10 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-SOURCE = '8af1328f54fa72807c3fe314d82f67cf488603a1'
-IPA_SHA256 = '888f37757cd83537228018437d1bfa2a78e6da5660cddd8d17f99959cd8d3a55'
+SOURCE = '31b7bf86464c8033a3b5b6facf8df740600741dd'
+IPA_SHA256 = '9935a6db0619b37d92cd6a591cfd321e0cceecef39dc36193bcfdf33ae9b4416'
 EXPECTED = {'source': SOURCE, 'bundle': 'com.jhardorp.loopaiphototest',
-            'version': '0.1.0', 'build': '4', 'storage': 'MemoryOnly',
+            'version': '0.1.0', 'build': '12', 'storage': 'MemoryOnly',
             'display_name': 'Loop AI Test'}
 
 
@@ -40,7 +40,7 @@ def main(directory):
         raise SystemExit('Effective signed product differs from the approved candidate')
     verified['ipa_sha256'] = digest
     (directory / 'VerifiedUpload.json').write_text(json.dumps(verified, indent=2) + '\n')
-    print('Approved Loop AI Test 0.1.0 (4): hash, signature, identity and isolation verified.')
+    print('Approved Loop AI Test 0.1.0 (12): hash, signature, identity and isolation verified.')
 
 
 if __name__ == '__main__':

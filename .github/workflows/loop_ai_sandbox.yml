@@ -228,21 +228,21 @@ jobs:
         with:
           script: |
             const {owner, repo} = context.repo;
-            const {data: run} = await github.rest.actions.getWorkflowRun({owner, repo, run_id: 39597325857});
-            if (run.conclusion !== 'success' || run.head_sha !== '8af1328f54fa72807c3fe314d82f67cf488603a1' ||
+            const {data: run} = await github.rest.actions.getWorkflowRun({owner, repo, run_id: 39637426976});
+            if (run.conclusion !== 'success' || run.head_sha !== '31b7bf86464c8033a3b5b6facf8df740600741dd' ||
                 run.head_branch !== 'migration/loop4-ai-photo' || run.path !== '.github/workflows/loop_ai_sandbox.yml') {
               throw new Error('Candidate validation provenance mismatch');
             }
-            const {data: artifact} = await github.rest.actions.getArtifact({owner, repo, artifact_id: 12346108397});
+            const {data: artifact} = await github.rest.actions.getArtifact({owner, repo, artifact_id: 12364268218});
             if (artifact.expired || artifact.workflow_run.id !== run.id ||
                 artifact.name !== 'loop-ai-separate-candidate-' + run.head_sha ||
-                artifact.digest !== 'sha256:ff49798ab556c1673f31529988ab022f6788ac610fc9fd00c8bcb41a76aa363b') {
+                artifact.digest !== 'sha256:91285461df9a1dcab7a72f184188ace6f496fb56162d06fa626bc51bfc53b980') {
               throw new Error('Candidate artifact provenance mismatch');
             }
       - uses: actions/download-artifact@v4
         with:
-          artifact-ids: '12346108397'
-          run-id: '39597325857'
+          artifact-ids: '12364268218'
+          run-id: '39637426976'
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/LoopAISandboxCandidate
           merge-multiple: true
@@ -261,7 +261,7 @@ jobs:
           FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
           FASTLANE_SKIP_UPDATE_CHECK: 'true'
           FASTLANE_HIDE_CHANGELOG: 'true'
-          APPROVED_SANDBOX_UPLOAD: '0.1.0 (4)'
+          APPROVED_SANDBOX_UPLOAD: '0.1.0 (12)'
         run: bundle exec fastlane ios upload_approved_candidate
       - name: Retain upload and Apple processing status
         if: always()

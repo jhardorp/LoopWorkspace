@@ -91,21 +91,21 @@ platform :ios do
   lane :upload_approved_candidate do
     UI.user_error!('Approved migration Actions upload required') unless
       ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo' &&
-      ENV['APPROVED_SANDBOX_UPLOAD'] == '0.1.0 (4)'
+      ENV['APPROVED_SANDBOX_UPLOAD'] == '0.1.0 (12)'
     identity = 'com.jhardorp.loopaiphototest'
     directory = File.join(ENV.fetch('RUNNER_TEMP'), 'LoopAISandboxCandidate')
     ipa = File.join(directory, 'LoopAIPhotoTest.ipa')
     verified = JSON.parse(File.read(File.join(directory, 'VerifiedUpload.json')))
-    expected_hash = '888f37757cd83537228018437d1bfa2a78e6da5660cddd8d17f99959cd8d3a55'
+    expected_hash = '9935a6db0619b37d92cd6a591cfd321e0cceecef39dc36193bcfdf33ae9b4416'
     UI.user_error!('Unapproved IPA identity or content') unless
       verified.fetch('bundle') == identity && verified.fetch('version') == '0.1.0' &&
-      verified.fetch('build') == '4' && verified.fetch('storage') == 'MemoryOnly' &&
-      verified.fetch('source') == '8af1328f54fa72807c3fe314d82f67cf488603a1' &&
+      verified.fetch('build') == '12' && verified.fetch('storage') == 'MemoryOnly' &&
+      verified.fetch('source') == '31b7bf86464c8033a3b5b6facf8df740600741dd' &&
       verified.fetch('ipa_sha256') == expected_hash && Digest::SHA256.file(ipa).hexdigest == expected_hash
     api_key = app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),
                                       issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
                                       key_content: ENV.fetch('FASTLANE_KEY'))
-    status = {bundle: identity, version: '0.1.0', build: '4', ipa_sha256: expected_hash,
+    status = {bundle: identity, version: '0.1.0', build: '12', ipa_sha256: expected_hash,
               upload_accepted: false, existing_build: false, processing_state: 'NOT_UPLOADED',
               external_distribution: false, device_installed: false}
     save_status = lambda do
@@ -131,11 +131,14 @@ platform :ios do
       status[:app_id] = app.id
       UI.message('The separate Loop AI Test app record is present.')
       find_build = lambda do
-        Spaceship::ConnectAPI::Build.all(app_id: app.id, version: '0.1.0', build_number: '4', platform: 'IOS').first
+        Spaceship::ConnectAPI::Build.all(app_id: app.id, version: '0.1.0', build_number: '12', platform: 'IOS').first
       end
       build = find_build.call
       status[:existing_build] = !build.nil?
-      unless build
+      existing_upload = Spaceship::ConnectAPI::BuildUpload.all(app_id: app.id, version: '0.1.0', build_number: status[:build]).first
+      status[:existing_upload] = !existing_upload.nil?
+      status[:upload_accepted] = true if build || existing_upload
+      unless build || existing_upload
         upload_to_testflight(api_key: api_key, app_identifier: identity, apple_id: app.id,
                              ipa: ipa, skip_waiting_for_build_processing: true,
                              skip_submission: true, distribute_external: false,
@@ -176,7 +179,7 @@ platform :ios do
       UI.user_error!('Apple rejected processing of this isolated test build; see UploadStatus.json') if
         ['FAILED', 'INVALID'].include?(status[:processing_state])
       if status[:processing_state] == 'VALID'
-        UI.success('Apple processed Loop AI Test 0.1.0 (4). No production app, tester group or device was changed.')
+        UI.success('Apple processed Loop AI Test 0.1.0 (12). No production app, tester group or device was changed.')
       else
         UI.important('Upload accepted; Apple processing is still pending. See UploadStatus.json for the actual status.')
       end

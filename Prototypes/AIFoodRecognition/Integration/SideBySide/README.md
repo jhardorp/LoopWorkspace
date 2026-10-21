@@ -22,7 +22,20 @@ The product verifier requires the exact descriptions and continues to reject
 HealthKit/Siri grants, shared stores, device plugins and background services.
 Six Python cases now cover the metadata and isolation boundaries. The upload
 poller also checks BuildUpload failures and records their actual errors.
-A fresh validated/signed candidate is required before another upload.
+The corrected **0.1.0 (12)** candidate from
+`31b7bf86464c8033a3b5b6facf8df740600741dd` passed all **12** checks and signing in
+[run 39637426976](https://github.com/jhardorp/LoopWorkspace/actions/runs/39637426976).
+Unsigned build passed at **16:52:11 UTC**, Xcode ad-hoc packaging at **16:53:16**,
+isolation at **16:53:21**, and actual UI execution at **16:58:50**. Signing/export
+passed at **17:09:00**, and signed-product verification at **17:09:02**. Effective
+entitlements still contain only app/team IDs, beta reports and get-task-allow;
+all four required privacy-description keys are present.
+[Candidate artifact 12364268218](https://github.com/jhardorp/LoopWorkspace/actions/runs/39637426976/artifacts/12364268218)
+is retained until **2026-10-28 17:09:03 UTC**. IPA SHA-256:
+`9935a6db0619b37d92cd6a591cfd321e0cceecef39dc36193bcfdf33ae9b4416`.
+The upload wrapper is now pinned to this corrected source, build, artifact and
+hash under the owner's existing separate-app upload authorization. The earlier
+build 4 remains failed and must not be installed or reuploaded.
 
 ## Identity and isolation
 
