@@ -70,12 +70,34 @@ A cancelled photo review never modifies the existing carb fields. Successful lat
 2. Swift package regression tests: duplicate/reentrant handoff, cancellation, superseded presentations, native limits, locale values, refinement, confidence acknowledgement, failed/rejected transfer and retries.
 3. Unchanged backend syntax and contract tests without real provider requests.
 4. Full integrated iOS Simulator build with signing disabled.
-5. Separate Xcode ad-hoc Simulator packaging, followed by a normal-app startup probe measuring installation, launch and 15 seconds of process survival. The validation job uses a fixed CI-only bundle ID and actual Simulator destination. It uses no Apple signing identity or provisioning profile; the unsigned build remains a separate required check.
+5. Separate Xcode ad-hoc Simulator packaging, followed by a normal-app startup probe measuring installation, launch and 15 seconds of process survival. SDK builds use a generic Simulator destination; the probe creates its own disposable device. The validation job uses a fixed CI-only bundle ID and no Apple signing identity or provisioning profile. The unsigned build remains a separate required check.
 6. Mock-only native adapter tests in a minimal ad-hoc Simulator host covering no save/no bolus side effects, edits, duplicate callbacks, cancellation, stale callbacks, queued favorites, unit conversion atomic native-limit rejection, and one stable new-entry sync identifier across repeated reviews/Continue.
 
-The full real application is built **before** test-host preparation. Only in the ephemeral migration CI checkout, `prepare_test_host.rb` then replaces main.swift and removes the scene manifest so model tests do not start LoopAppManager/Siri/device services. It does not change the committed application overlay, production startup, signing configuration, or algorithms. The test fixture lives in the host and the test bundle does not separately link the package, avoiding duplicate class definitions. An incremental host build and native tests follow. These adapter tests do not validate full application startup or camera/gallery UI end to end. Historical runs below used an unsigned host; the next CI revision uses Xcode ad-hoc Simulator signing consistently after the separate unsigned app build.
+The full real application is built **before** test-host preparation. Only in the ephemeral migration CI checkout, `prepare_test_host.rb` then replaces main.swift and removes the scene manifest so model tests do not start LoopAppManager/Siri/device services. It does not change the committed application overlay, production startup, signing configuration, or algorithms. The test fixture lives in the host and the test bundle does not separately link the package, avoiding duplicate class definitions. An incremental host build and native tests follow. These adapter tests do not validate full application startup or camera/gallery UI end to end. Earlier runs used an unsigned host; the latest run uses Xcode ad-hoc Simulator signing consistently after the separate unsigned app build.
 
-### Recorded results — 2026-10-20
+### Latest validation — 2026-10-21
+
+Validated source: **`e768ff50dc335671f479543ccd5f3a525c733c20`**.
+[Run 39565198453](https://github.com/jhardorp/LoopWorkspace/actions/runs/39565198453): **SUCCESS**, including validation job `119105687987` and archive job `119123160084`.
+Toolchain: **Xcode 26.3 (17C529)** on macos-15; normal-startup runtime: **iOS 18.5**.
+
+| Check | Result |
+|---|---|
+| Exact source/dependency pins and protected production configuration | PASS |
+| Swift package regressions | **58 passed**, 0 failures |
+| Unchanged backend checks and contract tests | **26 passed**, 0 failures |
+| Full integrated Simulator build, signing disabled | **BUILD SUCCEEDED**, 08:16:05 UTC |
+| Separate Xcode ad-hoc Simulator packaging | **BUILD SUCCEEDED**, 08:19:21 UTC |
+| Normal application startup | **PASS**, 08:22:59 UTC: installed, launched and stayed running for 15 seconds on iOS 18.5; screenshot retained |
+| Native adapter regressions, including cancellation and duplicates | **6 passed**, 0 failures; **TEST SUCCEEDED**, 08:35:34 UTC |
+| Strict startup gate and owned-Simulator cleanup | PASS |
+| Validation evidence | Logs, startup screenshot and xcresult artifact `12332041068`, retained for 14 days |
+| Signed experimental archive | **PASS**: signed App Store IPA exported at 08:59:17 UTC with existing read-only signing |
+| Candidate artifact | [Artifact 12332699181](https://github.com/jhardorp/LoopWorkspace/actions/runs/39565198453/artifacts/12332699181), 66,740,987-byte download; expires **2026-10-28 08:59:21 UTC** |
+
+All **90 automated tests passed** on this source. Normal startup was measured with the real app entry point before generating the isolated adapter test host. The measurement does not establish completed onboarding, live photo analysis, migration of existing stores or clinical safety. The archive job used a fresh checkout of the same source and verified the normal AppDelegate entry point. Its build counter was set to **27** only in that CI checkout. The candidate artifact contains `Loop.ipa` and `MigrationCandidate.json`; the latter records the actual IPA source, version/build, identity, minimum iOS, Xcode and SHA-256. The artifact ZIP size above is not the IPA's size or hash. Production and main were rechecked unchanged on 2026-10-21; no TestFlight upload, physical-device installation, deployment or merge has occurred.
+
+### Historical baseline — 2026-10-20
 
 Validated code commit: **`3ac9aed295a2fcacb34e8f71f7946fc55552d65f`**.
 [Successful validation run 39397041333](https://github.com/jhardorp/LoopWorkspace/actions/runs/39397041333), job `118542215216`.
@@ -126,13 +148,13 @@ Packaging retry `b568928b09f8581e3a8f49612ddc9b8e6c421f98`, [run 39509636623](ht
 
 CI-only revision `8c2fb68b849b64a7060fb0a968cbfd8131b80126`, [run 39558721406](https://github.com/jhardorp/LoopWorkspace/actions/runs/39558721406), raised both job budgets to 180 minutes, aligned unsigned/ad-hoc settings, exposed build progress every 45 seconds and strengthened owned-Simulator cleanup. Its new preflight completed boot readiness but **failed shutting down the owned Simulator after 120 seconds**, before package tests or app compilation. The startup gate failed and the archive was skipped. This was a Simulator shutdown failure, not a compiler or app-startup result.
 
-The latest retry removes the boot/shutdown preflight and returns to `macos-15`, the host label used by the original passing run, with the same pinned **Xcode 26.3 (17C529)**. Package/backend checks and SDK-only unsigned/ad-hoc builds run before creating or booting any disposable Simulator. The post-build probe then creates its own Simulator and allows ten minutes for boot readiness. This keeps runtime-service failures from hiding the compilation/test evidence. Matching build settings, progress logs, 180-minute budgets, the actual-startup requirement, six native-test gate and read-only archive safeguards remain. The revised pipeline has not yet completed validation.
+Revision `e768ff50dc335671f479543ccd5f3a525c733c20` removes the boot/shutdown preflight and returns to `macos-15`, the host label used by the original passing run, with the same pinned **Xcode 26.3 (17C529)**. Package/backend checks and SDK-only unsigned/ad-hoc builds run before creating or booting any disposable Simulator. The post-build probe then creates its own Simulator and allows ten minutes for boot readiness. Matching build settings, progress logs, 180-minute budgets, the actual-startup requirement, six native-test gate and read-only archive safeguards remain. The complete validation and signed archive both passed as recorded above.
 
-An opt-in archive job is now prepared. It uses a fresh checkout of the validated source, the unchanged existing app identity, read-only provisioning and locked remote package versions. It retains an IPA and source/version/bundle/hash provenance for review, and has no TestFlight upload, installation or deployment step. This route is for a spare test device; side-by-side installation on the working phone requires distinct app/extension IDs, app group, URL scheme and profiles. A different bundle ID alone does not isolate HealthKit data. No signed migration IPA has been produced as of this record.
+The opt-in archive job produced the signed candidate linked above. It used a fresh checkout of the validated source, the unchanged existing app identity, read-only provisioning and locked remote package versions. It retains an IPA and source/version/bundle/hash provenance for review, and has no TestFlight upload, installation or deployment step. This route is for a spare test device; side-by-side installation on the working phone requires distinct app/extension IDs, app group, URL scheme and profiles. A different bundle ID alone does not isolate HealthKit data. The App Store IPA is not directly installable, and no TestFlight build was uploaded.
 
 ## Unresolved limitations and independent validation still required
 
-The recorded Arm64 and Intel runs have no unresolved compiler errors or failing regression tests. Normal startup remains unresolved: earlier attempts timed out during installation/boot; prewarming subsequently reached successful installation but launch was denied. No normal process-survival measurement has passed. Live camera/gallery interactions, real provider responses and clinical behavior have **not** been validated by the mock adapter tests. The native test class requires the workflow's generated host fixture; run it through the migration validation workflow, rather than the normal unprepared LoopTests scheme. Production signing/backend configuration was preserved, and no physical app, TestFlight release or deployment was changed.
+The latest validation has no failing regression tests or unresolved compiler errors. Normal Simulator startup and the signed device archive passed. The archive has not been installed or independently validated. Live camera/gallery interactions, real provider responses and clinical behavior have **not** been validated by the mock adapter tests. The native test class requires the workflow's generated host fixture; run it through the migration validation workflow, rather than the normal unprepared LoopTests scheme. Production signing/backend configuration was preserved, and no physical app, TestFlight release or deployment was changed.
 
 The following checks remain:
 
