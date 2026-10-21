@@ -47,7 +47,23 @@ protected production configuration. It runs five isolation regression tests and
 four memory-ledger tests, builds the app unsigned, packages it for Simulator with
 Xcode ad-hoc signing, checks effective isolation, and runs two actual UI cases:
 native editor cancellation and one explicit test save followed by an empty relaunch.
-It refuses an empty UI test run. Initial macOS results are **pending**.
+It refuses an empty UI test run.
+
+Source **`8af1328f54fa72807c3fe314d82f67cf488603a1`** passed all 11 new checks in
+[run 39597325857](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857).
+The unsigned build passed at **2026-10-21 12:18:34 UTC**, ad-hoc packaging at
+12:20:09 and both UI tests at **12:28:10**. Effective Simulator entitlements were
+empty; the product used the separate test ID, version **0.1.0 (4)**. Evidence
+artifact `12345008663` was retained successfully. On the same unchanged runtime
+code, the normal migration's 90 regressions, unsigned build and normal startup
+also passed at `7018ca0f8766db40594a327111d386644730ffaf`. Only the separate signing
+wrapper changed afterwards. The separate signed candidate has also **passed**
+on the current source, as recorded below. No physical-device installation has occurred.
+
+The signing wrapper imports the existing certificate read-only, retrieves Sigh's
+actual downloaded file through `SIGH_PROFILE_PATH`, and resets Fastlane's profile
+mapping to this app alone before export. It disables automatic profile detection,
+so unrelated production profiles or nil import mappings cannot enter its export.
 
 An explicit `[sandbox-candidate]` migration commit marker or the manual
 `prepare_signed_sandbox` input requests an archive after the checks pass. The signing
@@ -64,6 +80,47 @@ If the API connection cannot create records, it records that remaining setup wit
 publishing or discarding the signed archive. It does not upload. The App Store
 IPA is not directly installable. Upload or installation requires the user's explicit
 approval under the migration instructions.
+
+## Prepared candidate — 2026-10-21
+
+The final source **`8af1328f54fa72807c3fe314d82f67cf488603a1`** passed all 11
+separate-app checks and the signed archive in
+[run 39597325857](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857).
+The unsigned build passed at **12:18:34 UTC**, ad-hoc packaging at **12:20:09**,
+and both UI tests at **12:28:10**. The signed App Store IPA exported at **12:38:55**,
+then passed the exported-product identity/isolation check at **12:39:09**.
+
+- App: **Loop AI Test 0.1.0 (4)**, `com.jhardorp.loopaiphototest`.
+- Signed entitlement keys: application identifier, team identifier, beta reports
+  and get-task-allow. No HealthKit, shared app group or shared-keychain entitlement.
+- [Candidate artifact 12346108397](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857/artifacts/12346108397)
+  includes the IPA, `SandboxCandidate.json` and `AppRecordStatus.json`; it expires
+  **2026-10-28 12:39:11 UTC**.
+- IPA SHA-256: `888f37757cd83537228018437d1bfa2a78e6da5660cddd8d17f99959cd8d3a55`.
+- [Validation artifact 12345008663](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857/artifacts/12345008663)
+  retains logs and xcresult for 14 days.
+- The new developer identifier/profile exists. App Store Connect app-record
+  creation did not succeed through the API connection; the run found no record.
+  No TestFlight upload, physical-device installation, deployment or production
+  branch/configuration change occurred.
+
+## Remaining Apple app-record setup
+
+Open [App Store Connect → Apps](https://appstoreconnect.apple.com/apps). If the
+separate record is not already listed, select **+ → New App** and use:
+
+| Field | Value |
+|---|---|
+| Platform | iOS |
+| Name | Loop AI Test jhardorp |
+| Primary language | English (U.S.) |
+| Bundle ID | `com.jhardorp.loopaiphototest` (already registered) |
+| SKU | `loop-ai-photo-test` |
+
+Creating this empty record does not publish the app. The signed App Store IPA
+cannot be installed directly; it still needs an explicitly approved TestFlight
+upload and Apple processing before on-phone testing. This setup does not replace
+or change the existing Loop app record.
 
 ## On-phone acceptance after approved distribution
 

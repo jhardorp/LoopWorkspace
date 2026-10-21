@@ -4,22 +4,49 @@ Review: [draft PR #2](https://github.com/jhardorp/LoopWorkspace/pull/2), targeti
 
 ## Evidence and its limits
 
-Latest validated source: **`e768ff50dc335671f479543ccd5f3a525c733c20`**. The validation job in [run 39565198453](https://github.com/jhardorp/LoopWorkspace/actions/runs/39565198453) **passed** on macos-15 with **Xcode 26.3 (17C529)** on 2026-10-21:
+Latest separate-app source: **`8af1328f54fa72807c3fe314d82f67cf488603a1`**.
+The complete [run 39597325857](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857)
+**passed** on Xcode **26.3 (17C529)** on 2026-10-21:
 
-- **58 Swift package tests, 26 unchanged backend tests and six native adapter tests passed**: 90 total, zero failures.
-- The complete integrated normal app built with signing disabled at **08:16:05 UTC**. Separate Xcode ad-hoc Simulator packaging passed at **08:19:21 UTC**.
-- The normal app installed, launched and stayed running for **15 seconds on iOS 18.5**, with a screenshot retained, at **08:22:59 UTC**. This used the real application entry point before generating the isolated native test host.
-- The six native tests passed at **08:35:34 UTC**. The explicit six-case check, strict normal-startup gate and owned-Simulator cleanup also passed.
-- Build/test logs, startup screenshot and xcresult are in artifact `12332041068`, retained for 14 days.
-- The separate signed archive job **passed**, exporting the signed App Store IPA at **08:59:17 UTC** using existing read-only signing. The whole workflow succeeded. [Candidate artifact 12332699181](https://github.com/jhardorp/LoopWorkspace/actions/runs/39565198453/artifacts/12332699181) contains `Loop.ipa` and its `MigrationCandidate.json` provenance; it expires **2026-10-28 08:59:21 UTC**. CI set the build counter to **27** in the temporary archive checkout. Consult the provenance for the actual IPA metadata and SHA-256.
+- **Five isolation tests, four memory-ledger tests and two native UI tests passed**.
+  The cases cover forbidden entitlements/identities/plugins, invalid or duplicate
+  test saves, editor cancellation, one explicit test save and an empty relaunch.
+- The separate unsigned build passed at **12:18:34 UTC**, Xcode ad-hoc packaging
+  at **12:20:09**, and actual UI execution at **12:28:10**.
+- The signed App Store IPA exported at **12:38:55**, then passed the effective
+  identity/entitlement/bundle isolation check at **12:39:09**. It is
+  **Loop AI Test 0.1.0 (4)**, `com.jhardorp.loopaiphototest`.
+- Signed entitlements contain only application/team identification, beta reports
+  and get-task-allow. No HealthKit, app-group or shared-keychain grant is present;
+  no device plugin, watch companion or extension is included.
+- [Candidate artifact 12346108397](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857/artifacts/12346108397)
+  contains the IPA and source/version/isolation/hash/app-record records, retained
+  until **2026-10-28 12:39:11 UTC**. Validation artifact `12345008663` retains the
+  logs and xcresult for 14 days.
+- IPA SHA-256: `888f37757cd83537228018437d1bfa2a78e6da5660cddd8d17f99959cd8d3a55`.
 
-The probe uses a fixed CI-only bundle ID and Xcode ad-hoc Simulator signing with no Apple account, certificate or provisioning profile. Generic Simulator SDK builds run before creating the disposable Simulator. The app's original entry point and scene configuration remain intact. The temporary app copy and owned Simulator are deleted. The archive uses a fresh checkout of the validated source and the existing production signing identity; it does not inherit the Simulator identity or generated test host.
+The complete normal migration also passed **58 package + 26 backend + six native
+adapter tests**, the full unsigned build, normal Xcode packaging and a real
+15-second startup measurement on **iOS 18.5** in
+[run 39584372756](https://github.com/jhardorp/LoopWorkspace/actions/runs/39584372756),
+source `7018ca0f8766db40594a327111d386644730ffaf`. Only the separate Fastlane wrapper
+changed between that source and the final candidate; runtime sources and all
+upstream pins are identical. Combined coverage is **90 existing + 11 new checks**.
 
-This establishes normal process survival at startup. It does **not** establish completed onboarding, live camera/gallery or provider behavior, actual persisted-entry counts, migration of existing stores, physical-device behavior or clinical safety. The mock adapter tests separately cover editable values, atomic native bounds, cancelled/stale/duplicate callbacks, queued favorites and stable new-entry identity without storage or delivery side effects.
+The separate identifier/profile exists and uses the existing certificate. The
+App Store Connect app-record creation attempt did not succeed with the API
+connection; that manual setup remains, using [these exact fields](SideBySide/README.md#remaining-apple-app-record-setup).
+Nothing was uploaded to TestFlight, installed on a physical device, deployed or
+merged. The App Store IPA is not directly installable.
 
-Earlier validation runs, their failures and fixes are recorded in [MIGRATION_LOOP4.md](../../../MIGRATION_LOOP4.md). They include successful builds/regressions on Arm64 and Intel hosts and unsuccessful Simulator boot, installation, launch, packaging and preflight attempts. The latest complete validation supersedes those startup failures; it does not prove a unique cause for each earlier infrastructure failure.
-
-**No independent clinical or safety validation has been performed.** The authoring assistant's source review and automated tests cannot provide that independence. The manual acceptance record below remains PENDING.
+The isolated app starts the real migrated carbohydrate editor and the same AI
+module. It uses a memory-only test destination instead of the real bolus screen,
+without instantiating production startup, stores or device managers. This does
+**not** validate live camera/gallery/provider behavior, actual production stored
+entry counts, upgrades of existing stores, pump/CGM behavior or clinical safety.
+The authoring assistant's review and tests are not independent validation.
+The independent/manual record below remains PENDING. Earlier runs and packaging
+failures/fixes are recorded in [MIGRATION_LOOP4.md](../../../MIGRATION_LOOP4.md).
 
 ## Source review completed by the authoring assistant
 
@@ -31,6 +58,20 @@ Earlier validation runs, their failures and fixes are recorded in [MIGRATION_LOO
 - No custom changes were made to dosing algorithms, pump/CGM communication or therapy settings. Updating the pinned upstream introduces upstream changes in those areas; independent review must include them.
 
 ## Installation route must preserve the working app
+
+The requested same-phone preparation now has a distinct **Loop AI Test** mode,
+`com.jhardorp.loopaiphototest`, described in [SideBySide/README.md](SideBySide/README.md).
+It keeps the actual migrated carbohydrate editor but replaces production startup
+and the bolus destination with isolated test UI. It grants no HealthKit, app-group
+or shared-keychain access and saves test entries only in memory. The working Loop
+is not replaced. The normal app's 90 regressions/build/startup passed again on
+`7018ca0f8766db40594a327111d386644730ffaf`; separate-app checks and UI tests also
+passed. Artifact retention initially hit a connection reset; attempt 2 passed
+again and retained its evidence. The final signed separate candidate then passed
+all checks as recorded above. Its on-phone/live AI checks remain pending.
+
+The following full-Loop routes retain the earlier same-identity candidate. The separate
+AI test mode above is the current same-phone preparation.
 
 The existing `Loop meal photo review` upload workflow is restricted to the production feature branch and hardcodes its existing app identity. It must not be repurposed to ship this migration.
 

@@ -75,7 +75,79 @@ A cancelled photo review never modifies the existing carb fields. Successful lat
 
 The full real application is built **before** test-host preparation. Only in the ephemeral migration CI checkout, `prepare_test_host.rb` then replaces main.swift and removes the scene manifest so model tests do not start LoopAppManager/Siri/device services. It does not change the committed application overlay, production startup, signing configuration, or algorithms. The test fixture lives in the host and the test bundle does not separately link the package, avoiding duplicate class definitions. An incremental host build and native tests follow. These adapter tests do not validate full application startup or camera/gallery UI end to end. Earlier runs used an unsigned host; the latest run uses Xcode ad-hoc Simulator signing consistently after the separate unsigned app build.
 
-### Latest validation — 2026-10-21
+### Separate installation preparation — 2026-10-21
+
+The separate **Loop AI Test** app uses bundle ID `com.jhardorp.loopaiphototest`,
+its own default keychain/container, a distinct TEST icon and URL scheme, and no
+shared app-group or HealthKit entitlement. It starts the migrated native carb
+editor with an isolated delegate. Continue opens a test preview; the final save
+adds only an in-memory test entry. There is no pump/CGM setup, production startup,
+device plugin, bolus UI or HealthKit write path in this mode. Favorites and the AI
+login may persist only in this app's own storage. The unchanged personal AI backend
+still analyzes its images. See [the test-app guide](Prototypes/AIFoodRecognition/Integration/SideBySide/README.md).
+
+Source **`7018ca0f8766db40594a327111d386644730ffaf`** passed the complete normal
+migration validation in [run 39584372756](https://github.com/jhardorp/LoopWorkspace/actions/runs/39584372756),
+job `119170179800`, using Xcode **26.3 (17C529)**:
+
+| Normal migration check | Result |
+|---|---|
+| Swift package / unchanged backend / native adapter | **58 + 26 + 6 passed**, zero failures |
+| Full normal unsigned Simulator build | **PASS**, 10:45:25 UTC |
+| Normal Xcode ad-hoc Simulator packaging | **PASS**, 10:48:42 UTC |
+| Normal app startup, iOS 18.5 | **PASS**, 15-second survival and screenshot at 10:52:32 UTC |
+| Native adapter cases, strict startup gate, cleanup | **PASS**; tests completed 11:06:53 UTC |
+| Normal same-identity archive | SKIPPED intentionally; this request prepares the distinct test app |
+
+The current separate-app source **`8af1328f54fa72807c3fe314d82f67cf488603a1`**
+passed all **11 new checks** in [run 39597325857](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857),
+validation job `119212769173`: five isolation regressions, four memory-ledger tests
+and both native UI cases. The unsigned build passed at **12:18:34 UTC**, Xcode
+ad-hoc packaging at **12:20:09**, and both UI tests at **12:28:10**. Effective
+Simulator entitlements were empty; the app identified itself as
+`com.jhardorp.loopaiphototest`, version **0.1.0 (4)**. Evidence artifact
+`12345008663` was retained. Both validation and archive jobs **passed**.
+
+| Separate signed candidate | Result |
+|---|---|
+| Device archive and signed App Store IPA export | **PASS**, exported **2026-10-21 12:38:55 UTC** |
+| Exported IPA identity/isolation check | **PASS**, 12:39:09 UTC; version **0.1.0 (4)**, own test ID |
+| Effective signed entitlement keys | application identifier, team identifier, beta reports, get-task-allow; no HealthKit, app groups or shared keychain |
+| IPA SHA-256 | `888f37757cd83537228018437d1bfa2a78e6da5660cddd8d17f99959cd8d3a55` |
+| Candidate artifact | [12346108397](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857/artifacts/12346108397), ZIP 22,688,042 bytes; expires **2026-10-28 12:39:11 UTC** |
+| App Store Connect record | **Still required**: API creation did not succeed; no record was found in this run |
+| Upload / physical-device installation / deployment | **None** |
+
+The candidate contains `LoopAIPhotoTest.ipa`, `SandboxCandidate.json` and
+`AppRecordStatus.json`. Its signing uses the existing certificate and a profile
+only for the new identifier; production profiles, the signing repository and root
+signing configuration were not changed. The archive is not directly installable.
+Create the separate App Store Connect record using the fields in the test-app
+guide; a future TestFlight upload still requires explicit approval.
+
+Application, UI, support and dependency source are unchanged from `7018ca0`, which
+passed the 90 normal migration regressions above; subsequent changes affect only
+the separate Fastlane wrapper. Thus the two workflows cover **90 existing + 11
+new checks** without suggesting that they establish clinical safety.
+
+Earlier preparation attempts exposed an unnamed generated UI test product, then
+GitHub artifact creation failed with `ECONNRESET` after all UI checks passed.
+Those were corrected/retried. The first separate signing attempt created its own
+identifier/profile but used Sigh's returned profile UUID as a filename. The next
+attempt built the device archive successfully at **12:06:27 UTC**, then export
+rejected a nil production profile mapping left by read-only certificate import.
+The wrapper now reads `SIGH_PROFILE_PATH`, uses the selected existing certificate,
+and exports with only the new app's explicit profile mapping and automatic
+profile detection disabled. No runtime UI or production configuration changed
+for those packaging corrections.
+
+This mode tests photo analysis, refinement and reviewed-value transfer into the
+new editor alongside the working app. It does not validate the real bolus screen,
+the production data upgrade or clinical behavior. A future upload/installation
+still needs explicit approval under the migration requirements. Independent
+validation remains pending.
+
+### Earlier signed migration candidate — 2026-10-21
 
 Validated source: **`e768ff50dc335671f479543ccd5f3a525c733c20`**.
 [Run 39565198453](https://github.com/jhardorp/LoopWorkspace/actions/runs/39565198453): **SUCCESS**, including validation job `119105687987` and archive job `119123160084`.
