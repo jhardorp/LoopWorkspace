@@ -27,8 +27,8 @@ platform :ios do
       candidate.fetch('source') == ENV.fetch('GITHUB_SHA') &&
       candidate.fetch('app_group') == 'group.' + identity && candidate.fetch('full_native_startup') == true &&
       candidate.fetch('companions') == false && candidate.fetch('healthkit_isolation') == false &&
-      candidate.fetch('validation_source') == '92ffb1e7d4b08924154d00ed450cde28034c8b15' &&
-      candidate.fetch('validation_run') == 39650933568 &&
+      candidate.fetch('validation_source') == 'a001806a3bfd71316621c6fc499fb6fe599b5948' &&
+      candidate.fetch('validation_run') == 39652563167 &&
       candidate.fetch('version') == '3.15.2' && candidate.fetch('build') == ENV.fetch('GITHUB_RUN_NUMBER') &&
       candidate.fetch('ipa_sha256') == Digest::SHA256.file(ipa).hexdigest
     api_key = app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),

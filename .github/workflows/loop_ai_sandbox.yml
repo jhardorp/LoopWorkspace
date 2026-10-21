@@ -335,8 +335,8 @@ jobs:
             const {owner, repo} = context.repo;
             const deadline = Date.now() + 60 * 60 * 1000;
             while (true) {
-              const {data: run} = await github.rest.actions.getWorkflowRun({owner, repo, run_id: 39650933568});
-              if (run.head_sha !== '92ffb1e7d4b08924154d00ed450cde28034c8b15') throw new Error('Unexpected validation source.');
+              const {data: run} = await github.rest.actions.getWorkflowRun({owner, repo, run_id: 39652563167});
+              if (run.head_sha !== 'a001806a3bfd71316621c6fc499fb6fe599b5948') throw new Error('Unexpected validation source.');
               if (run.status === 'completed') {
                 if (run.conclusion !== 'success') throw new Error('Full-app Simulator validation did not pass; refusing signing/upload.');
                 break;
@@ -349,13 +349,13 @@ jobs:
         run: |
           python3 - <<'PY'
           import subprocess
-          paths = subprocess.check_output(['git', 'diff', '--name-only', '92ffb1e7d4b08924154d00ed450cde28034c8b15', 'HEAD'], text=True).splitlines()
+          paths = subprocess.check_output(['git', 'diff', '--name-only', 'a001806a3bfd71316621c6fc499fb6fe599b5948', 'HEAD'], text=True).splitlines()
           prefix = 'Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/'
           allowed = {'.github/workflows/loop_ai_sandbox.yml'} | {prefix + name for name in (
               'fastlane/Fastfile', 'record_candidate.py', 'README.md', 'verify_product_test.py')}
           assert set(paths).issubset(allowed), paths
           PY
-          git diff --exit-code 92ffb1e7d4b08924154d00ed450cde28034c8b15 HEAD -- \
+          git diff --exit-code a001806a3bfd71316621c6fc499fb6fe599b5948 HEAD -- \
             Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/prepare.rb \
             Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/verify_product.py \
             Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/probe_startup.py

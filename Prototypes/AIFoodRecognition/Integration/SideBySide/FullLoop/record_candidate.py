@@ -23,8 +23,8 @@ if __name__ == '__main__':
         data = json.loads(record.read_text())
         data['ipa_sha256'] = hashlib.file_digest(ipa.open('rb'), 'sha256').hexdigest()
         data['xcode'] = subprocess.check_output(['xcodebuild', '-version'], text=True).strip()
-        data['validation_source'] = '92ffb1e7d4b08924154d00ed450cde28034c8b15'
-        data['validation_run'] = 39650933568
+        data['validation_source'] = 'a001806a3bfd71316621c6fc499fb6fe599b5948'
+        data['validation_run'] = 39652563167
         data['uploaded'] = False
         data['installed'] = False
         record.write_text(json.dumps(data, indent=2) + '\n')
