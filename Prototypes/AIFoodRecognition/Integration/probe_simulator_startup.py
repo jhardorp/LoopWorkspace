@@ -50,8 +50,18 @@ def main():
             state = prepared_device(output, allow_missing=True)
             if state is None:
                 return
+            cleanup_errors = []
             for command in [("shutdown", state["device"]), ("delete", state["device"])]:
-                subprocess.run(["xcrun", "simctl", *command], capture_output=True, timeout=30)
+                try:
+                    result = subprocess.run(["xcrun", "simctl", *command], capture_output=True, text=True, timeout=120)
+                    # Shutting down an already stopped device is harmless; deletion
+                    # still has to succeed, and a timeout must not skip its attempt.
+                    if command[0] == "delete" and result.returncode:
+                        cleanup_errors.append(result.stderr.strip())
+                except subprocess.TimeoutExpired:
+                    cleanup_errors.append(f"{command[0]} timed out")
+            if cleanup_errors:
+                raise SystemExit("Disposable Simulator cleanup failed: " + "; ".join(cleanup_errors))
         return
     if args.prepare_only:
         if state_path.exists():
@@ -89,7 +99,9 @@ def prepare_device(output):
     state = {"device": device, "runtime_id": runtime_id, "runtime_version": runtime["version"], "source": os.environ["GITHUB_SHA"]}
     (output / "device.json").write_text(json.dumps(state, indent=2) + "\n")
     run("xcrun", "simctl", "boot", device)
-    print(f"Started first boot of disposable iOS {runtime['version']} Simulator before compilation; readiness is checked later.")
+    run("xcrun", "simctl", "bootstatus", device, "-b", timeout=600)
+    run("xcrun", "simctl", "shutdown", device, timeout=120)
+    print(f"Initialized disposable iOS {runtime['version']} Simulator and shut it down before compilation. The launch probe boots it again.")
 
 
 def prepared_device(output, allow_missing=False):
