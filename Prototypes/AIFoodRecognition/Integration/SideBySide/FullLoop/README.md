@@ -37,6 +37,11 @@ Production was read only. Apple's public `/v1/appGroups` endpoint returned 404
 `group.com.jhardorp.loopaiphototest` in Developer Portal and associate only the
 test ID before signing. No archive or upload occurred in that setup run.
 
+The full native app also requires Time Sensitive Notifications. The test-ID setup
+enables this capability explicitly, including when the older production app's
+capability reference lacks it. This retains upstream notification entitlements
+and changes only the test identifier; production capabilities remain unchanged.
+
 The full-package validation generates a `LoopNextAI` workspace scheme in the
 disposable CI checkout, preserving normal device/service plugins and all normal
 main-app Swift files. Six package regression cases reject production identity,

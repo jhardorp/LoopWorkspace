@@ -278,6 +278,15 @@ platform :ios do
       settings = capability.capability_type == 'APP_GROUPS' ? [] : (capability.settings || [])
       bundle.create_capability(capability.capability_type, settings: settings)
     end
+    # Pinned next-dev requires this entitlement even when the older production
+    # app's capability reference does not contain it. Enable only the test ID;
+    # preserve the native entitlement and leave production capabilities alone.
+    notification_capability = 'TIME_SENSITIVE_NOTIFICATIONS'
+    unless bundle.get_capabilities.any? { |capability| capability.capability_type == notification_capability }
+      bundle.create_capability(notification_capability, settings: [])
+    end
+    UI.user_error!('The separate app time-sensitive notification capability is missing') unless
+      bundle.get_capabilities.any? { |capability| capability.capability_type == notification_capability }
     # Inspect the documented App Store Connect resource namespace only. If the
     # API connection does not expose app groups, leave website setup explicit.
     uri = URI('https://api.appstoreconnect.apple.com/v1/appGroups')
