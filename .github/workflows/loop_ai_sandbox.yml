@@ -15,14 +15,15 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ${{ contains(github.event.head_commit.message, '[sandbox-access-check]') && 'loop-ai-app-record-check' || 'loop-ai-separate-test-app' }}
+  group: ${{ (contains(github.event.head_commit.message, '[sandbox-access-check]') || contains(github.event.head_commit.message, '[sandbox-create-record]')) && 'loop-ai-app-record-check' || 'loop-ai-separate-test-app' }}
   cancel-in-progress: true
 jobs:
   validate:
     if: >-
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
       !contains(github.event.head_commit.message, '[sandbox-upload-approved]') &&
-      !contains(github.event.head_commit.message, '[sandbox-access-check]')
+      !contains(github.event.head_commit.message, '[sandbox-access-check]') &&
+      !contains(github.event.head_commit.message, '[sandbox-create-record]')
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -178,11 +179,12 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   check_app_record:
-    name: Read-only Apple app-record visibility check
+    name: Resolve the isolated Apple app record
     if: >-
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
       github.event_name == 'push' &&
-      contains(github.event.head_commit.message, '[sandbox-access-check]')
+      (contains(github.event.head_commit.message, '[sandbox-access-check]') ||
+       contains(github.event.head_commit.message, '[sandbox-create-record]'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -193,7 +195,7 @@ jobs:
         with:
           ruby-version: '3.3'
           bundler-cache: true
-      - name: Query only the existing API connection and app records
+      - name: Check the record or create only the approved separate app
         working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide
         env:
           BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
@@ -202,7 +204,9 @@ jobs:
           FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
           FASTLANE_SKIP_UPDATE_CHECK: 'true'
           FASTLANE_HIDE_CHANGELOG: 'true'
-        run: bundle exec fastlane ios check_app_record
+          APPLE_APP_RECORD_ACTION: ${{ contains(github.event.head_commit.message, '[sandbox-create-record]') && 'create_app_record' || 'check_app_record' }}
+          APPROVED_SANDBOX_RECORD: com.jhardorp.loopaiphototest
+        run: bundle exec fastlane ios "$APPLE_APP_RECORD_ACTION"
   upload_approved_candidate:
     name: Upload the approved isolated build only
     if: >-
