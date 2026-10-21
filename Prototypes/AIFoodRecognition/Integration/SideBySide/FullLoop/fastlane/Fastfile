@@ -1,0 +1,56 @@
+require 'json'
+require 'net/http'
+require 'uri'
+
+default_platform(:ios)
+opt_out_usage
+
+platform :ios do
+  desc 'Prepare only the existing test ID for the full app; no signing, upload or production writes'
+  lane :prepare_identifier do
+    UI.user_error!('Migration Actions branch required') unless
+      ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo'
+    identity = 'com.jhardorp.loopaiphototest'
+    group = 'group.com.jhardorp.loopaiphototest'
+    team = ENV.fetch('TEAMID')
+    UI.user_error!('Invalid team') unless team.match?(/\A[A-Z0-9]{10}\z/)
+    production_identity = "com.#{team}.loopkit.Loop"
+    UI.user_error!('Test identity overlaps production') if identity == production_identity
+    app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),
+                              issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
+                              key_content: ENV.fetch('FASTLANE_KEY'))
+    app = Spaceship::ConnectAPI::App.find(identity)
+    bundle = Spaceship::ConnectAPI::BundleId.find(identity)
+    UI.user_error!('The already registered separate test app is required') unless app && bundle
+    production = Spaceship::ConnectAPI::BundleId.find(production_identity)
+    UI.user_error!('Cannot read production capability reference') unless production
+    reference = production.get_capabilities
+    allowed = %w[APP_GROUPS HEALTHKIT PUSH_NOTIFICATIONS SIRIKIT NFC_TAG_READING TIME_SENSITIVE_NOTIFICATIONS]
+    required = reference.select { |capability| allowed.include?(capability.capability_type) }
+    existing = bundle.get_capabilities.map(&:capability_type)
+    required.each do |capability|
+      next if existing.include?(capability.capability_type)
+      # Never copy the production group's association or modify that identifier.
+      settings = capability.capability_type == 'APP_GROUPS' ? [] : (capability.settings || [])
+      bundle.create_capability(capability.capability_type, settings: settings)
+    end
+    # Inspect the documented App Store Connect resource namespace only. If the
+    # API connection does not expose app groups, leave website setup explicit.
+    uri = URI('https://api.appstoreconnect.apple.com/v1/appGroups')
+    request = Net::HTTP::Get.new(uri)
+    request['Authorization'] = "Bearer #{Spaceship::ConnectAPI.token.text}"
+    response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(request) }
+    body = JSON.parse(response.body)
+    info = {
+      bundle: identity, app_group: group, production_modified: false,
+      enabled_test_capabilities: bundle.get_capabilities.map(&:capability_type),
+      group_api_status: response.code.to_i, uploaded: false, signed: false
+    }
+    if response.code.to_i == 200
+      info[:group_registered] = body.fetch('data', []).any? { |entry| entry.dig('attributes', 'identifier') == group }
+    else
+      info[:group_api_errors] = body.fetch('errors', []).map { |error| error.slice('code', 'title', 'detail') }
+    end
+    UI.message('FULL_LOOP_IDENTIFIER: ' + JSON.generate(info))
+  end
+end
