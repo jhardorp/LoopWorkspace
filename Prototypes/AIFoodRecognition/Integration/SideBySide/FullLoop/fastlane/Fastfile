@@ -18,7 +18,7 @@ platform :ios do
     identity = 'com.jhardorp.loopaiphototest'
     UI.user_error!('Approved separate migration upload required') unless
       ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo' &&
-      ENV['APPROVED_FULL_TEST_UPLOAD'] == identity
+      ENV['APPROVED_FULL_TEST_UPLOAD'] == identity && ENV['FULL_VALIDATION_RESULT'] == 'success'
     directory = File.join(ENV.fetch('RUNNER_TEMP'), 'LoopNextAICandidate')
     ipa = File.join(directory, 'LoopNextAI.ipa')
     candidate = JSON.parse(File.read(File.join(directory, 'FullCandidate.json')))
@@ -27,8 +27,10 @@ platform :ios do
       candidate.fetch('source') == ENV.fetch('GITHUB_SHA') &&
       candidate.fetch('app_group') == 'group.' + identity && candidate.fetch('full_native_startup') == true &&
       candidate.fetch('companions') == false && candidate.fetch('healthkit_isolation') == false &&
-      candidate.fetch('validation_source') == 'a001806a3bfd71316621c6fc499fb6fe599b5948' &&
-      candidate.fetch('validation_run') == 39652563167 &&
+      candidate.fetch('validation_source') == ENV.fetch('FULL_VALIDATED_SOURCE') &&
+      ENV.fetch('FULL_VALIDATED_SOURCE') == ENV.fetch('GITHUB_SHA') &&
+      candidate.fetch('validation_run') == ENV.fetch('FULL_VALIDATED_RUN').to_i &&
+      ENV.fetch('FULL_VALIDATED_RUN') == ENV.fetch('GITHUB_RUN_ID') &&
       candidate.fetch('version') == '3.15.2' && candidate.fetch('build') == ENV.fetch('GITHUB_RUN_NUMBER') &&
       candidate.fetch('ipa_sha256') == Digest::SHA256.file(ipa).hexdigest
     api_key = app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),
@@ -156,6 +158,12 @@ platform :ios do
     entitlements = profile.fetch('Entitlements')
     UI.user_error!('Profile is not for the separate full app') unless
       entitlements.fetch('application-identifier') == "#{team}.#{identity}" && profile.fetch('TeamIdentifier') == [team]
+    UI.message('FULL_LOOP_PROFILE_GROUPS: ' + JSON.generate({
+      expected_group: group,
+      profile_groups: entitlements['com.apple.security.application-groups'],
+      created_at: profile['CreationDate'].to_s,
+      profile_name: profile['Name']
+    }))
     UI.user_error!("Own App Group is missing from the profile. Register #{group} and associate only #{identity} in Developer Portal.") unless
       entitlements['com.apple.security.application-groups'] == [group]
     UI.user_error!('The full app HealthKit profile capability is missing') unless entitlements['com.apple.developer.healthkit'] == true
@@ -168,6 +176,9 @@ platform :ios do
       }))
       next
     end
+    UI.user_error!('Successful full-product validation of this exact CI source is required') unless
+      ENV['FULL_VALIDATION_RESULT'] == 'success' && ENV['FULL_VALIDATED_SOURCE'] == actual &&
+      ENV['FULL_VALIDATED_RUN'] == ENV.fetch('GITHUB_RUN_ID')
     project = File.join(root, 'Loop/Loop.xcodeproj')
     update_project_team(path: project, teamid: team)
     update_code_signing_settings(path: project, use_automatic_signing: false, team_id: team,

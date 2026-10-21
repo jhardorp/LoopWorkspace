@@ -45,6 +45,19 @@ and companion installation. The signed Simulator product is checked before a
 15-second normal-startup probe. Acceptance also requires the pinned normal-app
 90-check regression run to pass; no backend is deployed.
 
+The fresh normal run [39648420016](https://github.com/jhardorp/LoopWorkspace/actions/runs/39648420016)
+passed all **90 checks** (58 Swift, 26 unchanged-backend, 6 native adapter), both
+Simulator builds and 15-second normal startup on iOS 18.5. The first separate
+full-product run compiled successfully but its verifier read an empty Simulator
+code-signature entitlement dictionary. Xcode's retained build log proves that
+its separate `Loop.app-Simulated.xcent` contains the expected private group.
+The corrected verifier reads the actual executable's `__TEXT,__entitlements`
+section for explicitly selected Simulator products. Real iOS IPA verification
+still requires Apple-signed entitlements and never falls back to that section.
+Six parser regression cases cover XML/binary plists, universal architecture
+agreement, truncated/missing sections, conflicting signatures and device-mode
+separation, in addition to the six package cases.
+
 The distinct `archive_candidate` lane imports the existing certificate/key with
 read-only Match and skips production profile downloads. It can create/renew only
 the test ID's `Loop Next AI AppStore` profile. Before compiling, it requires that
@@ -52,10 +65,10 @@ profile to contain exactly the private group and the full native HealthKit
 capability. It archives the native `LoopNextAI` scheme without an upload action.
 `record_candidate.py` verifies the exported identity, native plugins, effective
 entitlements and source; it records the IPA SHA-256 and successful validation run.
-The archive job rejects runtime or packaging-generator changes since that
-validation. The owner's request to launch the full integration as a separate
+The archive job depends directly on successful full-product validation and
+packaging preflight for the same CI source. The owner's request to launch the full integration as a separate
 current-phone installation authorizes the following private-test upload. The
-workflow waits for that exact full-package validation to succeed before signing,
+workflow waits for its own exact full-package validation to succeed before signing,
 then verifies the exported IPA and binds its SHA-256, current source/build,
 private group and validation provenance before uploading only to app record
 `6825358390`. It checks existing Build/BuildUpload records before transfer,

@@ -11,6 +11,9 @@ import zipfile
 if __name__ == '__main__':
     if os.environ.get('GITHUB_REF') != 'refs/heads/migration/loop4-ai-photo':
         raise SystemExit('Migration branch required')
+    assert os.environ['FULL_VALIDATION_RESULT'] == 'success'
+    assert os.environ['FULL_VALIDATED_SOURCE'] == os.environ['GITHUB_SHA']
+    assert os.environ['FULL_VALIDATED_RUN'] == os.environ['GITHUB_RUN_ID']
     directory = Path(os.environ['RUNNER_TEMP']) / 'LoopNextAICandidate'
     ipa = directory / 'LoopNextAI.ipa'
     record = directory / 'FullCandidate.json'
@@ -23,8 +26,8 @@ if __name__ == '__main__':
         data = json.loads(record.read_text())
         data['ipa_sha256'] = hashlib.file_digest(ipa.open('rb'), 'sha256').hexdigest()
         data['xcode'] = subprocess.check_output(['xcodebuild', '-version'], text=True).strip()
-        data['validation_source'] = 'a001806a3bfd71316621c6fc499fb6fe599b5948'
-        data['validation_run'] = 39652563167
+        data['validation_source'] = os.environ['FULL_VALIDATED_SOURCE']
+        data['validation_run'] = int(os.environ['FULL_VALIDATED_RUN'])
         data['uploaded'] = False
         data['installed'] = False
         record.write_text(json.dumps(data, indent=2) + '\n')

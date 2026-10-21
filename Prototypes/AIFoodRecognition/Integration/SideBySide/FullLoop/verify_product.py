@@ -5,6 +5,7 @@ import json
 import plistlib
 import subprocess
 from pathlib import Path
+from simulator_entitlements import effective_entitlements
 
 IDENTITY = 'com.jhardorp.loopaiphototest'
 GROUP = 'group.' + IDENTITY
@@ -56,15 +57,19 @@ if __name__ == '__main__':
     parser.add_argument('--app', type=Path, required=True)
     parser.add_argument('--source', required=True)
     parser.add_argument('--record', type=Path)
+    parser.add_argument('--simulator', action='store_true', help='Read Xcode Simulator entitlements from the executable; never use for an IPA')
     args = parser.parse_args()
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(args.app)], check=True)
     signed = subprocess.check_output(['codesign', '-d', '--entitlements', ':-', str(args.app)])
-    entitlements = plistlib.loads(signed) if signed.strip() else {}
+    signed_entitlements = plistlib.loads(signed) if signed.strip() else {}
+    info = plistlib.loads((args.app / 'Info.plist').read_bytes())
+    entitlements = effective_entitlements(args.app, info, signed_entitlements, args.simulator)
     info = verify(args.app, entitlements, args.source)
     record = {
         'source': args.source, 'bundle': IDENTITY, 'display_name': info['CFBundleDisplayName'],
         'version': info['CFBundleShortVersionString'], 'build': info['CFBundleVersion'],
         'app_group': GROUP, 'entitlements': sorted(entitlements), 'full_native_startup': True,
+        'entitlement_source': 'Simulator executable section' if args.simulator else 'Apple code signature',
         'companions': False, 'healthkit_isolation': False,
         'restriction': 'Experimental full app. Keep Health access and real pump/CGM connections off for initial current-phone tests. Not independently validated for therapy.',
     }
