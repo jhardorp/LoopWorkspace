@@ -1,6 +1,6 @@
 # Experimental upstream migration — validation only
 
-No clinical use or insulin delivery from this migration until independently validated. Engineering preparation includes an opt-in, validation-gated archive using existing read-only signing. TestFlight upload, device installation, backend deployment and merge into production remain outside this work.
+No clinical use or insulin delivery from this migration until independently validated. Engineering preparation includes an opt-in, validation-gated archive using existing read-only signing. The owner authorized the isolated AI-only TestFlight upload; corrected build 12 is processed and ready for internal testing. No physical installation, backend deployment or production merge was performed. The working Loop and its signing remain preserved.
 
 ## Reproducible source selection
 
@@ -99,42 +99,50 @@ job `119170179800`, using Xcode **26.3 (17C529)**:
 | Native adapter cases, strict startup gate, cleanup | **PASS**; tests completed 11:06:53 UTC |
 | Normal same-identity archive | SKIPPED intentionally; this request prepares the distinct test app |
 
-The current separate-app source **`8af1328f54fa72807c3fe314d82f67cf488603a1`**
-passed all **11 new checks** in [run 39597325857](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857),
-validation job `119212769173`: five isolation regressions, four memory-ledger tests
-and both native UI cases. The unsigned build passed at **12:18:34 UTC**, Xcode
-ad-hoc packaging at **12:20:09**, and both UI tests at **12:28:10**. Effective
-Simulator entitlements were empty; the app identified itself as
-`com.jhardorp.loopaiphototest`, version **0.1.0 (4)**. Evidence artifact
-`12345008663` was retained. Both validation and archive jobs **passed**.
+The current separate-app source **`31b7bf86464c8033a3b5b6facf8df740600741dd`**
+passed all **12 checks** in [run 39637426976](https://github.com/jhardorp/LoopWorkspace/actions/runs/39637426976),
+validation job `119351658987`: six metadata/isolation regressions, four Swift
+memory-ledger tests and two actual native UI cases. The unsigned build passed at
+**16:52:11 UTC**, Xcode ad-hoc packaging at **16:53:16**, empty Simulator-entitlement
+verification at **16:53:21**, and UI tests at **16:58:50**. Both validation and
+archive jobs passed; validation evidence is artifact `12364246648`.
 
-| Separate signed candidate | Result |
+| Current separate candidate | Result |
 |---|---|
-| Device archive and signed App Store IPA export | **PASS**, exported **2026-10-21 12:38:55 UTC** |
-| Exported IPA identity/isolation check | **PASS**, 12:39:09 UTC; version **0.1.0 (4)**, own test ID |
-| Effective signed entitlement keys | application identifier, team identifier, beta reports, get-task-allow; no HealthKit, app groups or shared keychain |
-| IPA SHA-256 | `888f37757cd83537228018437d1bfa2a78e6da5660cddd8d17f99959cd8d3a55` |
-| Candidate artifact | [12346108397](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857/artifacts/12346108397), ZIP 22,688,042 bytes; expires **2026-10-28 12:39:11 UTC** |
-| App Store Connect record | Initially absent; the owner-created empty record was subsequently corrected and verified for the separate ID |
-| Upload / physical-device installation / deployment | Separate IPA accepted by Apple at **2026-10-21 15:42:17 UTC**; no physical install or production deployment |
+| App/version | **Loop AI Test 0.1.0 (12)**, `com.jhardorp.loopaiphototest` |
+| Device archive and signed IPA | **PASS**, 2026-10-21 **17:09:00 UTC** |
+| Signed product/isolation check | **PASS**, **17:09:02 UTC**; four required privacy descriptions present |
+| Effective entitlement keys | app/team identifiers, beta reports, get-task-allow; no HealthKit, Siri, shared app group or shared keychain grant |
+| IPA SHA-256 | `9935a6db0619b37d92cd6a591cfd321e0cceecef39dc36193bcfdf33ae9b4416` |
+| Candidate artifact | [12364268218](https://github.com/jhardorp/LoopWorkspace/actions/runs/39637426976/artifacts/12364268218), expires **2026-10-28 17:09:03 UTC** |
+| Approved corrected upload | [Run 39641532086](https://github.com/jhardorp/LoopWorkspace/actions/runs/39641532086) **SUCCESS**; exact IPA reverified at **17:11:30**, Apple acceptance at **17:13:16** |
+| Apple processing | **VALID**, **17:16:19 UTC**, `ready_for_internal_testing: true`, `missing_export_compliance: false` |
+| Apple Build ID | `a72128c7-aa71-4ea6-8839-478895349dff` |
+| Upload-status artifact | [12366255397](https://github.com/jhardorp/LoopWorkspace/actions/runs/39641532086/artifacts/12366255397), expires **2026-11-04 17:16:19 UTC** |
+| Physical install / production deployment / merge | **None** |
 
-The candidate contains `LoopAIPhotoTest.ipa`, `SandboxCandidate.json` and
-`AppRecordStatus.json`. Its signing uses the existing certificate and a profile
-only for the new identifier; production profiles, the signing repository and root
-signing configuration were not changed. The archive is not directly installable.
-The owner explicitly approved uploading this separate app. The corrected Apple
-record is app ID **6825358390**. [Upload run 39627647246](https://github.com/jhardorp/LoopWorkspace/actions/runs/39627647246)
-**passed** and Apple accepted the existing IPA, without rebuilding; source and
-signature/hash/isolation checks passed again before transfer. At **16:02:26 UTC**,
-Apple processing remained `AWAITING_APPLE_RECORD`; upload acceptance does not
-establish internal-test readiness. [Evidence artifact 12358982603](https://github.com/jhardorp/LoopWorkspace/actions/runs/39627647246/artifacts/12358982603)
-retains the fresh verification and upload status. External distribution was
-disabled, tester groups were unchanged and no physical installation occurred.
+The owner explicitly authorized uploading the separate app. The corrected Apple
+record is **6825358390**. No internal groups/testers were changed; the owner can
+now select build 12 in a personal internal-testing group and install it through
+TestFlight. The existing working Loop remains installed and unchanged.
 
-Application, UI, support and dependency source are unchanged from `7018ca0`, which
-passed the 90 normal migration regressions above; subsequent changes affect only
-the separate Fastlane wrapper. Thus the two workflows cover **90 existing + 11
-new checks** without suggesting that they establish clinical safety.
+Earlier build **0.1.0 (4)** passed engineering tests but failed Apple ingestion
+with 90683 errors for missing Health read/write and Siri purpose strings, plus a
+Bluetooth-description warning. A Build-only poll had reported pending; the new
+BuildUpload diagnostic exposed the actual rejection. Four explicit descriptions
+now state those features are disabled, as required for references in linked Loop
+libraries. No entitlement, service, device connection or storage access was added.
+The product verifier requires these descriptions and still rejects forbidden
+entitlements/plugins/background modes; the upload poller detects ingestion errors.
+The original empty Apple app record also had the widget-extension ID; after
+confirming zero builds, only that record's bundle-ID field was corrected.
+Developer widget/production IDs, signing and the working app record were preserved.
+
+Application Swift, UI, support and dependency source remain unchanged from
+`7018ca0`, which passed the **90 normal migration regressions** above. Subsequent
+changes are isolated-app packaging metadata, verification/automation and docs.
+Together the normal baseline and current separate-app runs cover **90 + 12 checks**;
+these are engineering checks, not independent clinical validation.
 
 Earlier preparation attempts exposed an unnamed generated UI test product, then
 GitHub artifact creation failed with `ECONNRESET` after all UI checks passed.

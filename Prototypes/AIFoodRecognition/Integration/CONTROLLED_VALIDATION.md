@@ -4,51 +4,52 @@ Review: [draft PR #2](https://github.com/jhardorp/LoopWorkspace/pull/2), targeti
 
 ## Evidence and its limits
 
-Latest separate-app source: **`8af1328f54fa72807c3fe314d82f67cf488603a1`**.
-The complete [run 39597325857](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857)
+Latest separate-app source: **`31b7bf86464c8033a3b5b6facf8df740600741dd`**.
+[Run 39637426976](https://github.com/jhardorp/LoopWorkspace/actions/runs/39637426976)
 **passed** on Xcode **26.3 (17C529)** on 2026-10-21:
 
-- **Five isolation tests, four memory-ledger tests and two native UI tests passed**.
-  The cases cover forbidden entitlements/identities/plugins, invalid or duplicate
-  test saves, editor cancellation, one explicit test save and an empty relaunch.
-- The separate unsigned build passed at **12:18:34 UTC**, Xcode ad-hoc packaging
-  at **12:20:09**, and actual UI execution at **12:28:10**.
-- The signed App Store IPA exported at **12:38:55**, then passed the effective
-  identity/entitlement/bundle isolation check at **12:39:09**. It is
-  **Loop AI Test 0.1.0 (4)**, `com.jhardorp.loopaiphototest`.
-- Signed entitlements contain only application/team identification, beta reports
-  and get-task-allow. No HealthKit, app-group or shared-keychain grant is present;
-  no device plugin, watch companion or extension is included.
-- [Candidate artifact 12346108397](https://github.com/jhardorp/LoopWorkspace/actions/runs/39597325857/artifacts/12346108397)
-  contains the IPA and source/version/isolation/hash/app-record records, retained
-  until **2026-10-28 12:39:11 UTC**. Validation artifact `12345008663` retains the
-  logs and xcresult for 14 days.
-- IPA SHA-256: `888f37757cd83537228018437d1bfa2a78e6da5660cddd8d17f99959cd8d3a55`.
+- **Six metadata/isolation, four Swift memory-ledger and two native UI tests passed.**
+  Coverage includes required privacy descriptions, forbidden permissions/identities/
+  plugins, invalid or duplicate saves, cancellation, saving once and an empty relaunch.
+- Full separate unsigned build: **16:52:11 UTC**; Xcode ad-hoc packaging:
+  **16:53:16**; effective isolation: **16:53:21**; actual UI execution: **16:58:50**.
+- Signed export: **17:09:00**; effective signed product verified: **17:09:02**.
+  App **Loop AI Test 0.1.0 (12)**, `com.jhardorp.loopaiphototest`.
+- Effective entitlement keys remain app/team IDs, beta reports and get-task-allow.
+  No HealthKit/Siri/shared group/shared-keychain access, device plugin, watch app
+  or extension. Four purpose descriptions required by the linked libraries are
+  present; metadata does not enable these disabled features.
+- [Candidate artifact 12364268218](https://github.com/jhardorp/LoopWorkspace/actions/runs/39637426976/artifacts/12364268218),
+  expires **2026-10-28 17:09:03 UTC**. Validation artifact `12364246648` retains
+  logs/xcresult. IPA SHA-256:
+  `9935a6db0619b37d92cd6a591cfd321e0cceecef39dc36193bcfdf33ae9b4416`.
 
-The complete normal migration also passed **58 package + 26 backend + six native
-adapter tests**, the full unsigned build, normal Xcode packaging and a real
-15-second startup measurement on **iOS 18.5** in
-[run 39584372756](https://github.com/jhardorp/LoopWorkspace/actions/runs/39584372756),
-source `7018ca0f8766db40594a327111d386644730ffaf`. Only the separate Fastlane wrapper
-changed between that source and the final candidate; runtime sources and all
-upstream pins are identical. Combined coverage is **90 existing + 11 new checks**.
+The unchanged application Swift/UI/support/dependency baseline passed **58 package
++ 26 backend + six native adapter tests**, unsigned build and normal 15-second
+startup on iOS 18.5 in [run 39584372756](https://github.com/jhardorp/LoopWorkspace/actions/runs/39584372756),
+source `7018ca0f8766db40594a327111d386644730ffaf`. Subsequent changes affect separate
+packaging/metadata, verification/automation and documentation. Combined coverage:
+**90 baseline + 12 current separate-app checks**.
 
-The separate identifier/profile uses the existing certificate. The owner explicitly
-authorized the isolated app upload. The newly created empty Apple app record was
-corrected from a widget-extension ID to `com.jhardorp.loopaiphototest`; a fresh
-read and a repeat check confirmed the correction without changing developer
-identifiers, signing or the production app record.
+**Apple processed the corrected build and marked it ready for internal testing**
+at **17:16:19 UTC** in [successful upload run 39641532086](https://github.com/jhardorp/LoopWorkspace/actions/runs/39641532086),
+wrapper `da69fc185d08687dfda82b822c8473847410e472`. The exact tested IPA was
+reverified at **17:11:30**, then accepted at **17:13:16**. Final Build state:
+`VALID`; `ready_for_internal_testing: true`; `missing_export_compliance: false`.
+Build ID `a72128c7-aa71-4ea6-8839-478895349dff`; Apple app ID **6825358390**.
+[Status artifact 12366255397](https://github.com/jhardorp/LoopWorkspace/actions/runs/39641532086/artifacts/12366255397)
+contains verification/final-status records. The owner authorized this corrected
+separate upload. No tester group/invitation, physical installation, production
+deployment or merge was performed. The owner must add their own account/build to
+an internal-testing group before installation through TestFlight.
 
-**Apple accepted the existing Loop AI Test 0.1.0 (4) IPA at 2026-10-21 15:42:17 UTC**
-in [successful run 39627647246](https://github.com/jhardorp/LoopWorkspace/actions/runs/39627647246),
-wrapper `9e1de9e42cddcc37b2d19b649e410131f0c739b5`. Hash/signature/isolation were
-reverified before upload; the binary was not rebuilt. At **16:02:26 UTC**, after
-20 minutes, status was still `AWAITING_APPLE_RECORD`, with `upload_accepted: true`.
-**Apple processing and internal-test readiness remain unconfirmed.**
-[Evidence artifact 12358982603](https://github.com/jhardorp/LoopWorkspace/actions/runs/39627647246/artifacts/12358982603)
-contains effective-product and upload status JSON. External distribution was
-disabled and tester groups were unchanged. No physical install, production
-deployment or merge occurred. See the [full upload result](SideBySide/README.md#approved-upload-result--2026-10-21).
+Earlier build 4 was accepted by transport but **failed ingestion** for missing
+privacy strings, as a fresh BuildUpload check confirmed. It is not installable.
+The original widget-ID app-record error was corrected only on the exact named,
+empty user-created test record, after confirming zero builds. Registered widget/
+production IDs, their signing profiles, existing certificate, root signing,
+backend and working Loop were preserved. See the [complete candidate/installation
+guide](SideBySide/README.md#ready-for-internal-testing).
 
 The isolated app starts the real migrated carbohydrate editor and the same AI
 module. It uses a memory-only test destination instead of the real bolus screen,

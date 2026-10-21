@@ -5,6 +5,32 @@ It does not upgrade or replace the working Loop. No upload or device installatio
 is performed by the preparation workflow. A separate, explicitly authorized upload
 job can send the exact validated candidate to TestFlight, as described below.
 
+## Ready for internal testing
+
+**Loop AI Test 0.1.0 (12) is processed and ready for internal testing.**
+The existing upload authorization covered this corrected replacement.
+[Upload run 39641532086](https://github.com/jhardorp/LoopWorkspace/actions/runs/39641532086)
+**passed**, using wrapper `da69fc185d08687dfda82b822c8473847410e472` and the exact
+validated IPA from `31b7bf86464c8033a3b5b6facf8df740600741dd`.
+
+- Hash/signature/identity/isolation recheck: **2026-10-21 17:11:30 UTC**.
+- Apple accepted the corrected IPA: **17:13:16 UTC**.
+- Apple Build state: **VALID**, **17:16:19 UTC**.
+- `ready_for_internal_testing: true`; `missing_export_compliance: false`.
+- Apple Build ID: `a72128c7-aa71-4ea6-8839-478895349dff`.
+- [Status artifact 12366255397](https://github.com/jhardorp/LoopWorkspace/actions/runs/39641532086/artifacts/12366255397)
+  contains fresh verification and final status; expires **2026-11-04 17:16:19 UTC**.
+
+The last read-only check found zero internal groups, and this upload did not change
+any group or invite testers. For the owner to install: open the
+[separate app's TestFlight page](https://appstoreconnect.apple.com/apps/6825358390/testflight/ios),
+create a **Personal** group under **Internal Testing**, add the owner's existing
+Apple account and build **0.1.0 (12)**, then open TestFlight on the phone and install
+**Loop AI Test**. Keep the working Loop installed. No physical installation,
+production deployment, backend/signing change or merge was performed by the agent.
+This AI-only test mode remains experimental; independent safety acceptance is
+still pending.
+
 ## Current processing correction
 
 The read-only check at **2026-10-21 16:39:37 UTC** found that build **0.1.0 (4)**
@@ -114,7 +140,7 @@ publishing or discarding the signed archive. It does not upload. The App Store
 IPA is not directly installable. Upload or installation requires the user's explicit
 approval under the migration instructions.
 
-## Prepared candidate — 2026-10-21
+## Earlier build 4 candidate — 2026-10-21
 
 The final source **`8af1328f54fa72807c3fe314d82f67cf488603a1`** passed all 11
 separate-app checks and the signed archive in
@@ -180,7 +206,7 @@ The upload-only job uses the documented **macos-15-intel** runner and the same
 **Xcode 26.3 (17C529)** after the default macOS runner queue stalled. No binary is
 rebuilt. The upload job's `UploadStatus.json` records the actual final outcome.
 
-## Approved upload result — 2026-10-21
+## Earlier build 4 upload result — 2026-10-21
 
 **Apple accepted Loop AI Test 0.1.0 (4)** at **15:42:17 UTC** in
 [successful run 39627647246](https://github.com/jhardorp/LoopWorkspace/actions/runs/39627647246),
