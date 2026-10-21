@@ -98,10 +98,9 @@ def prepare_device(output):
     device = run("xcrun", "simctl", "create", "Loop AI migration startup", device_type["identifier"], runtime_id).strip()
     state = {"device": device, "runtime_id": runtime_id, "runtime_version": runtime["version"], "source": os.environ["GITHUB_SHA"]}
     (output / "device.json").write_text(json.dumps(state, indent=2) + "\n")
-    run("xcrun", "simctl", "boot", device)
-    run("xcrun", "simctl", "bootstatus", device, "-b", timeout=600)
-    run("xcrun", "simctl", "shutdown", device, timeout=120)
-    print(f"Initialized disposable iOS {runtime['version']} Simulator and shut it down before compilation. The launch probe boots it again.")
+    # Runtime initialization belongs to the post-build probe. Do not block the
+    # package tests or SDK-only compilation on Simulator boot/shutdown services.
+    print(f"Created disposable iOS {runtime['version']} Simulator. The post-build launch probe boots it.")
 
 
 def prepared_device(output, allow_missing=False):
