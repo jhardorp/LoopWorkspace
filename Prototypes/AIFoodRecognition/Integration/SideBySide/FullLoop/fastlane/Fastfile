@@ -6,11 +6,101 @@ require 'fileutils'
 require 'openssl'
 require 'shellwords'
 require 'xcodeproj'
+require 'digest'
+require 'time'
 
 default_platform(:ios)
 opt_out_usage
 
 platform :ios do
+  desc 'Upload only the verified full main-app candidate to the owner-approved separate slot'
+  lane :upload_verified_candidate do
+    identity = 'com.jhardorp.loopaiphototest'
+    UI.user_error!('Approved separate migration upload required') unless
+      ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo' &&
+      ENV['APPROVED_FULL_TEST_UPLOAD'] == identity
+    directory = File.join(ENV.fetch('RUNNER_TEMP'), 'LoopNextAICandidate')
+    ipa = File.join(directory, 'LoopNextAI.ipa')
+    candidate = JSON.parse(File.read(File.join(directory, 'FullCandidate.json')))
+    UI.user_error!('Unverified or wrong candidate') unless
+      candidate.fetch('bundle') == identity && candidate.fetch('display_name') == 'Loop Next AI' &&
+      candidate.fetch('source') == ENV.fetch('GITHUB_SHA') &&
+      candidate.fetch('app_group') == 'group.' + identity && candidate.fetch('full_native_startup') == true &&
+      candidate.fetch('companions') == false && candidate.fetch('healthkit_isolation') == false &&
+      candidate.fetch('validation_source') == '92ffb1e7d4b08924154d00ed450cde28034c8b15' &&
+      candidate.fetch('validation_run') == 39650933568 &&
+      candidate.fetch('version') == '3.15.2' && candidate.fetch('build') == ENV.fetch('GITHUB_RUN_NUMBER') &&
+      candidate.fetch('ipa_sha256') == Digest::SHA256.file(ipa).hexdigest
+    api_key = app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),
+                                      issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
+                                      key_content: ENV.fetch('FASTLANE_KEY'))
+    app = Spaceship::ConnectAPI::App.find(identity)
+    UI.user_error!('The exact separate app record is required') unless app && app.id == '6825358390'
+    status = candidate.slice('source', 'bundle', 'version', 'build', 'ipa_sha256', 'validation_source', 'validation_run')
+    status.merge!('upload_accepted' => false, 'processing_state' => 'NOT_UPLOADED',
+                  'app_id' => app.id, 'external_distribution' => false,
+                  'device_installed' => false, 'production_modified' => false)
+    save_status = lambda do
+      status['checked_at'] = Time.now.utc.iso8601
+      File.write(File.join(directory, 'FullUploadStatus.json'), JSON.pretty_generate(status) + "\n")
+      UI.message('FULL_LOOP_UPLOAD: ' + JSON.generate(status))
+    end
+    begin
+      find_build = lambda do
+        Spaceship::ConnectAPI::Build.all(app_id: app.id, version: status['version'], build_number: status['build'], platform: 'IOS').first
+      end
+      find_upload = lambda do
+        Spaceship::ConnectAPI::BuildUpload.all(app_id: app.id, version: status['version'], build_number: status['build']).first
+      end
+      build = find_build.call
+      ingestion = find_upload.call
+      status['existing_upload'] = !build.nil? || !ingestion.nil?
+      unless build || ingestion
+        upload_to_testflight(api_key: api_key, app_identifier: identity, apple_id: app.id, ipa: ipa,
+                             skip_waiting_for_build_processing: true, skip_submission: true,
+                             distribute_external: false, notify_external_testers: false)
+      end
+      status['upload_accepted'] = true
+      status['processing_state'] = 'AWAITING_APPLE_RECORD'
+      save_status.call
+      deadline = Time.now + 20 * 60
+      loop do
+        build ||= find_build.call
+        ingestion = find_upload.call
+        if ingestion
+          details = ingestion.state
+          state = details.is_a?(Hash) ? details['state'] : details
+          status['upload_processing_state'] = state
+          if state == 'FAILED'
+            status['processing_state'] = 'FAILED'
+            status['apple_errors'] = details.is_a?(Hash) ? details['errors'] : []
+            UI.user_error!('Apple rejected ingestion; see FullUploadStatus.json')
+          end
+        end
+        if build
+          status['build_id'] = build.id
+          status['processing_state'] = build.processing_state
+          unless build.build_beta_detail.nil?
+            status['ready_for_internal_testing'] = build.ready_for_internal_testing?
+            status['missing_export_compliance'] = build.missing_export_compliance?
+          end
+          break if ['VALID', 'FAILED', 'INVALID'].include?(build.processing_state)
+        end
+        break if Time.now >= deadline
+        sleep(30)
+        build = nil
+      end
+      UI.user_error!('Apple rejected the full test build; see FullUploadStatus.json') if ['FAILED', 'INVALID'].include?(status['processing_state'])
+      if status['processing_state'] == 'VALID'
+        UI.success('Apple processed the separate full test build. Working Loop, tester groups and devices were not changed.')
+      else
+        UI.important('Upload accepted; Apple processing remains pending. See FullUploadStatus.json.')
+      end
+    ensure
+      save_status.call
+    end
+  end
+
   desc 'Archive the validated full main app in the existing separate test slot; never upload'
   lane :archive_candidate do
     UI.user_error!('Migration Actions branch required') unless

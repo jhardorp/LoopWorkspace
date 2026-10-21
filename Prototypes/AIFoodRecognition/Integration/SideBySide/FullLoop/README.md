@@ -53,4 +53,25 @@ capability. It archives the native `LoopNextAI` scheme without an upload action.
 `record_candidate.py` verifies the exported identity, native plugins, effective
 entitlements and source; it records the IPA SHA-256 and successful validation run.
 The archive job rejects runtime or packaging-generator changes since that
-validation. A later upload must select the exact successful artifact explicitly.
+validation. The owner's request to launch the full integration as a separate
+current-phone installation authorizes the following private-test upload. The
+workflow waits for that exact full-package validation to succeed before signing,
+then verifies the exported IPA and binds its SHA-256, current source/build,
+private group and validation provenance before uploading only to app record
+`6825358390`. It checks existing Build/BuildUpload records before transfer,
+reports ingestion errors immediately and retains Apple processing status. No
+tester group is modified, no external distribution occurs and no device is
+installed or connected by automation.
+
+Developer Portal setup required before this signing step can pass:
+
+1. Under **Identifiers → App Groups**, register **Loop Next AI** with identifier
+   `group.com.jhardorp.loopaiphototest`.
+2. Open the test App ID **`com.jhardorp.loopaiphototest`**, edit **App Groups**,
+   select that group and save. Leave working Loop's identifier untouched.
+
+After successful upload/processing, select the new **3.15.2** build on the same
+test app's [TestFlight page](https://appstoreconnect.apple.com/apps/6825358390/testflight/ios).
+It replaces the AI-only test app, never working Loop. Keep Health access and real
+pump/CGM connections off for initial testing; this full app has normal native
+capabilities and has not been independently validated for therapy.

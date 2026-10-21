@@ -15,7 +15,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ${{ contains(github.event.head_commit.message, '[full-loop-prepared]') && 'loop-ai-full-preparation' || ((contains(github.event.head_commit.message, '[sandbox-access-check]') || contains(github.event.head_commit.message, '[sandbox-repair-record]')) && 'loop-ai-app-record-check' || 'loop-ai-separate-test-app') }}
+  group: ${{ contains(github.event.head_commit.message, '[full-loop-archive]') && 'loop-ai-full-archive' || (contains(github.event.head_commit.message, '[full-loop-prepared]') && 'loop-ai-full-preparation' || ((contains(github.event.head_commit.message, '[sandbox-access-check]') || contains(github.event.head_commit.message, '[sandbox-repair-record]')) && 'loop-ai-app-record-check' || 'loop-ai-separate-test-app')) }}
   cancel-in-progress: true
 jobs:
   validate:
@@ -286,7 +286,8 @@ jobs:
     if: >-
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
       github.event_name == 'push' &&
-      contains(github.event.head_commit.message, '[full-loop-prepared]')
+      (contains(github.event.head_commit.message, '[full-loop-prepared]') ||
+       contains(github.event.head_commit.message, '[full-loop-archive]'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -310,7 +311,8 @@ jobs:
           python3 Prototypes/AIFoodRecognition/Integration/configure_scheme.py
           bundle exec ruby Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/prepare.rb
   full_loop_archive:
-    name: Archive only the validated separate full main app
+    name: Archive and upload the approved separate full main app
+    needs: full_loop_preflight
     if: >-
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
       github.event_name == 'push' &&
@@ -331,9 +333,17 @@ jobs:
         with:
           script: |
             const {owner, repo} = context.repo;
-            const {data: run} = await github.rest.actions.getWorkflowRun({owner, repo, run_id: 39650933568});
-            if (run.conclusion !== 'success' || run.head_sha !== '92ffb1e7d4b08924154d00ed450cde28034c8b15') {
-              throw new Error('The exact separate full-app validation must pass before signing.');
+            const deadline = Date.now() + 60 * 60 * 1000;
+            while (true) {
+              const {data: run} = await github.rest.actions.getWorkflowRun({owner, repo, run_id: 39650933568});
+              if (run.head_sha !== '92ffb1e7d4b08924154d00ed450cde28034c8b15') throw new Error('Unexpected validation source.');
+              if (run.status === 'completed') {
+                if (run.conclusion !== 'success') throw new Error('Full-app Simulator validation did not pass; refusing signing/upload.');
+                break;
+              }
+              if (Date.now() >= deadline) throw new Error('Full-app validation is still pending; refusing signing/upload.');
+              core.info('Waiting for the exact full-app validation; no signing or upload has started.');
+              await new Promise(resolve => setTimeout(resolve, 30000));
             }
       - name: Verify validated packaging source and protected configuration
         run: |
@@ -381,6 +391,17 @@ jobs:
         run: bundle exec fastlane ios archive_candidate
       - name: Verify the exported full app and record exact provenance
         run: python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/record_candidate.py
+      - name: Upload the verified full candidate only to the existing separate test app
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+          APPROVED_FULL_TEST_UPLOAD: com.jhardorp.loopaiphototest
+        run: bundle exec fastlane ios upload_verified_candidate
       - name: Retain the separate full-app archive and signing evidence
         if: always()
         uses: actions/upload-artifact@v4
