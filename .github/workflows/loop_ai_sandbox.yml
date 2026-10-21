@@ -15,13 +15,14 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: loop-ai-separate-test-app
+  group: ${{ contains(github.event.head_commit.message, '[sandbox-access-check]') && 'loop-ai-app-record-check' || 'loop-ai-separate-test-app' }}
   cancel-in-progress: true
 jobs:
   validate:
     if: >-
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
-      !contains(github.event.head_commit.message, '[sandbox-upload-approved]')
+      !contains(github.event.head_commit.message, '[sandbox-upload-approved]') &&
+      !contains(github.event.head_commit.message, '[sandbox-access-check]')
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -176,6 +177,32 @@ jobs:
             ${{ runner.temp }}/LoopAISandboxCandidate/AppRecordStatus.json
           if-no-files-found: error
           retention-days: 7
+  check_app_record:
+    name: Read-only Apple app-record visibility check
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[sandbox-access-check]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Query only the existing API connection and app records
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios check_app_record
   upload_approved_candidate:
     name: Upload the approved isolated build only
     if: >-
