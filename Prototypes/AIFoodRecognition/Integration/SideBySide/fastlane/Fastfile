@@ -40,27 +40,33 @@ platform :ios do
     certificate_id = File.basename(certificates.first, '.cer')
     certificate = OpenSSL::X509::Certificate.new(File.binread(certificates.first))
     UI.user_error!('Existing distribution certificate is expired') unless certificate.not_after > Time.now
+    certificate_name = certificate.subject.to_a.find { |entry| entry[0] == 'CN' }&.[](1)
+    UI.user_error!('Existing signing certificate has no common name') if certificate_name.to_s.empty?
 
     bundle = Spaceship::ConnectAPI::BundleId.find(identity)
     bundle ||= Spaceship::ConnectAPI::BundleId.create(name: 'Loop AI Test', identifier: identity, platform: 'IOS')
     UI.user_error!('Wrong separate bundle identifier') unless bundle.identifier == identity
     # Sigh can create/download this app's profile using the selected existing
     # certificate. It cannot issue certificates or modify the signing Git repo.
-    profile_path = get_provisioning_profile(api_key: api_key, team_id: team,
+    get_provisioning_profile(api_key: api_key, team_id: team,
                                            app_identifier: identity, cert_id: certificate_id,
                                            provisioning_name: 'Loop AI Test AppStore',
                                            output_path: signing, filename: 'LoopAIPhotoTest.mobileprovision',
                                            force: false)
+    # Sigh returns a profile UUID. Its downloaded file is a separate lane output.
+    profile_path = Actions.lane_context[SharedValues::SIGH_PROFILE_PATH]
+    UI.user_error!('Downloaded test profile is missing') unless
+      profile_path && File.file?(profile_path) && File.realpath(profile_path).start_with?(File.realpath(signing) + File::SEPARATOR)
     profile = FastlaneCore::ProvisioningProfile.parse(profile_path)
     UI.user_error!('Profile does not belong to the separate app') unless
       profile.fetch('Entitlements').fetch('application-identifier').end_with?('.' + identity)
     project = File.join(root, 'Loop/Loop.xcodeproj')
     update_project_team(path: project, teamid: team)
     update_code_signing_settings(path: project, use_automatic_signing: false, team_id: team,
-                                bundle_identifier: identity, code_sign_identity: 'Apple Distribution',
+                                bundle_identifier: identity, code_sign_identity: certificate_name,
                                 profile_name: profile.fetch('Name'), targets: ['Loop'])
     update_code_signing_settings(path: project, use_automatic_signing: false, team_id: team,
-                                code_sign_identity: 'Apple Distribution', targets: ['LoopCore', 'LoopCore-watchOS', 'LoopUI'])
+                                code_sign_identity: certificate_name, targets: ['LoopCore', 'LoopCore-watchOS', 'LoopUI'])
     artifacts = File.join(ENV.fetch('RUNNER_TEMP'), 'LoopAISandboxCandidate')
     gym(workspace: File.join(root, 'LoopWorkspace.xcworkspace'), scheme: 'LoopAIPhotoTest',
         configuration: 'Release', destination: 'generic/platform=iOS',
@@ -90,6 +96,7 @@ platform :ios do
       creation_attempted: creation_attempted, creation_error_type: creation_error,
       note: 'App Store Connect app record is required before a future explicitly approved TestFlight upload.'
     }) + "\n")
+    UI.message("Separate app record exists: #{!app_record.nil?}; uploaded: false")
     UI.success('Separate Loop AI Test archive prepared. No TestFlight upload, device installation, production provisioning changes or deployment.')
   end
 end
