@@ -82,3 +82,11 @@ therapy settings before updating and check their preservation after launch.
 Actual phone installation, device state and clinical safety are not verified
 by this publishing result. Keep the migration experimental until independently
 validated; an older app cannot be assumed to reopen the migrated database.
+
+The final full rerun [39748477893](https://github.com/jhardorp/LoopWorkspace/actions/runs/39748477893)
+also passed on publishing source `c5ff6bfacb70ee52edb5a5896e42a4d406bebee3`:
+**58 Swift + 26 backend + 6 native adapter cases**, zero failures; unsigned
+Simulator build **08:43:59 UTC**, Xcode ad-hoc build **08:45:47 UTC**, normal
+15-second startup on iOS 18.5 **08:47:47 UTC**, native cases completed
+**08:55:14 UTC**. Together with the four migration cases, this provides
+**94 automated checks**. Independent therapy validation remains pending.
