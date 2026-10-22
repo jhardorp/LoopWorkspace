@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   full_loop_testflight_status:
-    name: Read the uploaded full test build and existing TestFlight assignment
+    name: Read the uploaded full test build's actual internal state
     if: >-
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
       github.event_name == 'push' &&
@@ -46,7 +46,7 @@ jobs:
         run: |
           ruby -c fastlane/Fastfile
           bundle exec fastlane ios check_uploaded_testflight_status
-      - name: Retain actual TestFlight readiness and existing group IDs
+      - name: Retain actual TestFlight build state without distribution changes
         if: always()
         uses: actions/upload-artifact@v4
         with:
