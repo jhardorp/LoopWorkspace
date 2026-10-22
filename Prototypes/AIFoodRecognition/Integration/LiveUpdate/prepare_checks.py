@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import plistlib
 import subprocess
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[4]
 HERE = Path(__file__).resolve().parent
@@ -33,4 +34,14 @@ path = ROOT / "LoopKit/LoopKitTests/Persistence/PersistenceControllerMigrationTe
 text = path.read_text()
 assert "testProductionV4SettingsAndHistorySurviveUpgrade" not in text
 path.write_text(text + "\n" + (HERE / "MigrationTests.swift").read_text().replace("LEGACY_SETTINGS_BASE64", blob))
+# Several workspace dependencies call their scheme Shared. Give LoopKit's
+# real test bundle a unique workspace scheme, with the correct container path.
+scheme = ET.parse(ROOT / "LoopKit/LoopKit.xcodeproj/xcshareddata/xcschemes/Shared.xcscheme")
+for ref in scheme.getroot().iter("BuildableReference"):
+    ref.set("ReferencedContainer", "container:LoopKit/LoopKit.xcodeproj")
+testables = scheme.getroot().find("TestAction/Testables")
+for test in list(testables):
+    if test.find("BuildableReference").get("BlueprintName") != "LoopKitTests":
+        testables.remove(test)
+scheme.write(ROOT / "LoopWorkspace.xcworkspace/xcshareddata/xcschemes/LoopKitMigration.xcscheme", encoding="UTF-8", xml_declaration=True)
 print("Added two disposable v4 settings/history migration regressions, including repeat launch and a non-default insulin model.")
