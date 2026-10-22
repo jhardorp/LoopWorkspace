@@ -1,5 +1,7 @@
 # Full Loop plus AI — experimental candidate
 
+**Current status, 22 October 2026:** The separate full app **Loop Next AI 3.15.2 (24)** was uploaded and the owner reported successful photo/UI testing without pump or CGM setup. The owner then explicitly authorized an update of the existing Loop app. **3.15.2 (27) is now VALID / IN_BETA_TESTING under the existing app identity**, following four database migration cases and original IPA verification. See [the existing-app update report](LiveUpdate/README.md). Independent therapy validation and actual installation verification remain outstanding. The plan below describes the earlier separate-installation stage; its identity restriction is specific to that stage.
+
 The owner reports that the separately installed **Loop AI Test 0.1.0 (12)** works
 perfectly after the requested photo/comment/review/save/restart exercise, and now
 requests the AI integration in the full migrated Loop interface. This is owner
@@ -25,8 +27,8 @@ must not be presented as such. The existing production signing/release workflows
 backend, feature/main branches and installed working Loop remain protected.
 
 The owner selected the **current iPhone with a separate installation**. Reuse the
-existing test-only app slot `com.jhardorp.loopaiphototest`, never the working Loop
-identity. Give the full experimental app its own registered storage group and
+existing test-only app slot `com.jhardorp.loopaiphototest` for this separate-test
+stage. Give the full experimental app its own registered storage group and
 companion identities before distribution. Same-phone separate
 installation requires distinct full-app/companion identities, storage groups and
 URL schemes. HealthKit data is shared by the operating system and is not isolated

@@ -52,3 +52,33 @@ Read-only Apple check [39746718005](https://github.com/jhardorp/LoopWorkspace/ac
 confirmed the existing app is `6737123014` and its latest build is
 `3.14.9 (26)`, VALID and IN_BETA_TESTING. The owner-authorized upload is for
 that existing app, not the separate `Loop Next AI` installation.
+
+## Published existing-app update — 22 October 2026
+
+**Loop 3.15.2 (27) is VALID and IN_BETA_TESTING in the existing Loop app.**
+[Publishing run 39748477901](https://github.com/jhardorp/LoopWorkspace/actions/runs/39748477901)
+passed, job `119722764592`, publishing source
+`c5ff6bfacb70ee52edb5a5896e42a4d406bebee3`. The IPA was reused unchanged from
+source `e768ff50dc335671f479543ccd5f3a525c733c20`.
+
+Apple accepted transport at **08:36:50 UTC** and completed processing at
+**08:46:26 UTC**. The final read at **08:46:27 UTC** confirmed Build
+`204a741a-0a29-4525-a57c-355b063a5d70`, state **VALID**, internal state
+**IN_BETA_TESTING**, missing export compliance **false**, ingestion **COMPLETE**.
+The experimental release notes were set successfully. No external distribution
+or tester-group changes were requested.
+
+[Artifact 12413795284](https://github.com/jhardorp/LoopWorkspace/actions/runs/39748477901/artifacts/12413795284)
+retains the unchanged IPA, original/verified candidate records, pre-upload app
+status and final upload record. Its ZIP SHA-256 is
+`1a453361661e5c238303aeb3c14733fc6a7b30051e222508c49c897abaa66d42`, size
+**66,743,516 bytes**, expiry **2026-11-05 08:46:28 UTC**. This ZIP hash differs
+from the IPA hash above.
+
+For an in-place installation, open the **original Loop** card in TestFlight and
+select **3.15.2 (27) → Update**, keeping the installed app and its data. The
+separate **Loop Next AI** test card remains a different app. Record the existing
+therapy settings before updating and check their preservation after launch.
+Actual phone installation, device state and clinical safety are not verified
+by this publishing result. Keep the migration experimental until independently
+validated; an older app cannot be assumed to reopen the migrated database.

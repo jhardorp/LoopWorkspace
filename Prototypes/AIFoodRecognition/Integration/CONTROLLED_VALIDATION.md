@@ -2,6 +2,8 @@
 
 Review: [draft PR #2](https://github.com/jhardorp/LoopWorkspace/pull/2), targeting the preserved `feature/ai-food-recognition` branch. Do not merge as part of validation. The complete source lock and comparison are in [MIGRATION_LOOP4.md](../../../MIGRATION_LOOP4.md).
 
+**Current status, 22 October 2026:** The owner reported successful AI/UI testing in the separate full **Loop Next AI 3.15.2 (24)** with pump/CGM unconfigured, then explicitly authorized publishing an update under the existing Loop identity. Four database migration cases and the unchanged signed candidate's verification passed in [39747429039](https://github.com/jhardorp/LoopWorkspace/actions/runs/39747429039). **Existing Loop 3.15.2 (27) is VALID / IN_BETA_TESTING**, [publishing run 39748477901](https://github.com/jhardorp/LoopWorkspace/actions/runs/39748477901), final Apple read 08:46:27 UTC. See [the full existing-app evidence](LiveUpdate/README.md). No automated physical installation, external distribution, production merge, signing change or backend deployment occurred. The independent safety acceptance record below remains pending. The prior isolated-app evidence is historical, not the latest package status.
+
 ## Evidence and its limits
 
 Latest separate-app source: **`31b7bf86464c8033a3b5b6facf8df740600741dd`**.

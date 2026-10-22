@@ -1,14 +1,14 @@
-# Experimental upstream migration — validation only
+# Experimental upstream migration — pinned Loop 4 development line
 
-No clinical use or insulin delivery from this migration until independently validated. Engineering preparation includes an opt-in, validation-gated archive using existing read-only signing. The owner authorized the isolated AI-only TestFlight upload; corrected build 12 is processed and ready for internal testing. No physical installation, backend deployment or production merge was performed. The working Loop and its signing remain preserved.
+No clinical use or insulin delivery from this migration until independently validated. After successful separate-app photo/UI testing, the owner explicitly requested an update of the working app. **Loop 3.15.2 (27) is now uploaded under the existing Loop identity, processed VALID and IN_BETA_TESTING at 2026-10-22 08:46:27 UTC.** Four old-format database migration cases and the original signed app's hash/signature/identity verification passed before publication. See [existing-app update evidence and installation details](Prototypes/AIFoodRecognition/Integration/LiveUpdate/README.md). No automated physical installation, backend deployment, production merge or production signing change was performed. Actual device migration and independent therapy validation remain outstanding. Earlier separate-test stages are retained below as historical evidence.
 
 ## Reproducible source selection
 
-- Production source: `feature/ai-food-recognition` at `cb4f6b1821489a27b06a36e378b0a7e5267bcbf1` (Loop 3.14.9, last accepted build 26).
+- Preserved production branch: `feature/ai-food-recognition` at `cb4f6b1821489a27b06a36e378b0a7e5267bcbf1` (Loop 3.14.9, baseline build 26). The published 3.15.2 (27) update comes from the migration branch; production is not merged.
 - Initial migration documentation: `852b186a857a530db4eacea021b0d9b6c22120ad`; all new commits remain on `migration/loop4-ai-photo`.
 - Upstream **LoopWorkspace next-dev**: `53253aaa774a95ea6e299cc1a2fabc4af861328c`, 2026-10-19.
 - Compatible upstream **Loop** pin: `b55744981c2e589799754d19f73b8912c8809e12`.
-- Workspace marketing version: **3.15.2 (58)**, minimum iOS **17.6**. “loop4” is the migration branch name, not an upstream version claim.
+- Upstream workspace version file: **3.15.2 (58)**, minimum iOS **17.6**; the existing-app TestFlight package is **3.15.2 (27)**. The 3.15.x next-dev line is the development line intended to become Loop 4, not a released stable 4.0.
 - The newer Loop-only head `bbede6cbe22967069703fc18a1508a5193e02c14` removes support-report UI. It is not yet pinned by this workspace. This migration uses the latest published workspace dependency combination rather than mixing independent branch tips.
 
 `Integration/upstream-lock.json` records every gitlink. Workspace `Package.resolved` pins remote Swift dependencies; local algorithm/device packages use those gitlinks. Xcode is restricted to remote package versions in the resolved file. Gemfile/lock, signing files, deployment workflows, personal plist configurator, backend, and production upload request are preserved from production. Workspace references, scheme, Swift resolution lock and version file come from the selected upstream workspace. `apply.py` rejects any other Loop source pin.
