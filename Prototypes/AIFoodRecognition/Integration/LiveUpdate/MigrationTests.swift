@@ -36,7 +36,7 @@ extension PersistenceControllerMigrationTests {
         // Open twice: the second launch must neither rerun destructively nor duplicate entries.
         for _ in 0..<2 {
             let cache = try openCacheStore()
-            defer { cache.tearDown() }
+            defer { closePreservingMigratedStore(cache) }
             let settings = try XCTUnwrap(SettingsStore(store: cache, expireAfter: .hours(24)).latestSettings)
             let encoded = try PropertyListEncoder().encode(settings)
             let restored = try XCTUnwrap(PropertyListSerialization.propertyList(from: encoded, format: nil) as? [String: Any])
@@ -71,5 +71,17 @@ extension PersistenceControllerMigrationTests {
                 XCTAssertEqual(try cache.managedObjectContext.count(for: SettingsObject.fetchRequest()), 1)
             }
         }
+    }
+
+    private func closePreservingMigratedStore(_ cache: PersistenceController) {
+        // The upstream test tearDown() also destroys the SQLite file. A launch
+        // regression must detach its coordinator while preserving that file.
+        XCTAssertNoThrow(try cache.managedObjectContext.performAndWait {
+            let coordinator = try XCTUnwrap(cache.managedObjectContext.persistentStoreCoordinator)
+            cache.managedObjectContext.reset()
+            for store in coordinator.persistentStores {
+                try coordinator.remove(store)
+            }
+        })
     }
 }

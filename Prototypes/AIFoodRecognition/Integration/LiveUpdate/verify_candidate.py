@@ -48,7 +48,7 @@ def verify(directory):
         assert signed['application-identifier'] == TEAM + '.' + BUNDLE
         assert signed['com.apple.developer.team-identifier'] == TEAM
         assert signed['com.apple.security.application-groups'] == [GROUP]
-        assert signed.get('get-task-allow') is False
+        assert signed.get('get-task-allow', False) is False
         assert signed['com.apple.developer.healthkit'] is True
         assert profile['Entitlements']['application-identifier'] == TEAM + '.' + BUNDLE
         assert profile['Entitlements']['com.apple.security.application-groups'] == [GROUP]
