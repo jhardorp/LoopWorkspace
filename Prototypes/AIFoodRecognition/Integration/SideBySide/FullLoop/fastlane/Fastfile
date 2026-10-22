@@ -14,6 +14,57 @@ default_platform(:ios)
 opt_out_usage
 
 platform :ios do
+  desc 'Read the exact uploaded full test build status without changing distribution'
+  lane :check_uploaded_testflight_status do
+    UI.user_error!('Migration Actions status check required') unless
+      ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo'
+    identity = 'com.jhardorp.loopaiphototest'
+    app_id = '6825358390'
+    build_id = '52b05f2f-3745-481d-a722-ce0b1f2d111c'
+    app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),
+                              issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
+                              key_content: ENV.fetch('FASTLANE_KEY'))
+    read_json = lambda do |path|
+      uri = URI('https://api.appstoreconnect.apple.com/v1/' + path)
+      request = Net::HTTP::Get.new(uri)
+      request['Authorization'] = "Bearer #{Spaceship::ConnectAPI.token.text}"
+      response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(request) }
+      UI.user_error!("Apple test status read failed (HTTP #{response.code})") unless response.code.to_i == 200
+      JSON.parse(response.body)
+    end
+    query = URI.encode_www_form(include: 'app,preReleaseVersion,buildBetaDetail')
+    data = read_json.call("builds/#{build_id}?#{query}")
+    build = data.fetch('data')
+    included = data.fetch('included')
+    app = included.find { |item| item['type'] == 'apps' }
+    version = included.find { |item| item['type'] == 'preReleaseVersions' }
+    detail = included.find { |item| item['type'] == 'buildBetaDetails' }
+    UI.user_error!('Wrong test build/app/version returned') unless
+      build.fetch('id') == build_id && build.dig('attributes', 'version') == '24' &&
+      app && app['id'] == app_id && app.dig('attributes', 'bundleId') == identity &&
+      version && version.dig('attributes', 'version') == '3.15.2' && detail
+    groups = read_json.call("builds/#{build_id}/betaGroups?limit=200")
+    UI.user_error!('Unexpected additional test-group pages') if groups.dig('links', 'next')
+    internal_ids = groups.fetch('data').select { |item| item.dig('attributes', 'isInternalGroup') == true }.map { |item| item.fetch('id') }
+    internal_state = detail.dig('attributes', 'internalBuildState')
+    status = {
+      bundle: identity, app_id: app_id, build_id: build_id, version: '3.15.2', build: '24',
+      source: 'b2252d048821dff94db71aa06c9cc6c9b6cdf2d8', upload_run: 39686356713,
+      ipa_sha256: '2713023a6b08541ed52856ab850c5cd0a131c9c60f3f56b7b8d989b82df75114',
+      processing_state: build.dig('attributes', 'processingState'),
+      internal_build_state: internal_state,
+      external_build_state: detail.dig('attributes', 'externalBuildState'),
+      ready_for_internal_assignment: internal_state == 'READY_FOR_BETA_TESTING',
+      in_internal_testing: internal_state == 'IN_BETA_TESTING',
+      internal_group_ids: internal_ids,
+      distribution_modified: false, device_installed: false, production_modified: false,
+      checked_at: Time.now.utc.iso8601
+    }
+    path = File.join(ENV.fetch('RUNNER_TEMP'), 'FullTestFlightReadiness.json')
+    File.write(path, JSON.pretty_generate(status) + "\n")
+    UI.message('FULL_TESTFLIGHT_READINESS: ' + JSON.generate(status))
+  end
+
   desc 'Check the current private group using a distinct metadata-only test profile'
   lane :check_current_group do
     identity = 'com.jhardorp.loopaiphototest'
