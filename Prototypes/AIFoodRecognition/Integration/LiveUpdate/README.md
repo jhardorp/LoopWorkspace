@@ -37,3 +37,18 @@ upload. It neither rebuilds nor re-signs the app and does not change the
 production branch, production signing repository, tester groups, devices or
 backend. Publishing does not prove installation or successful migration of the
 owner's actual device data.
+
+Migration run [39747429039](https://github.com/jhardorp/LoopWorkspace/actions/runs/39747429039)
+passed all four cases and the retained IPA signature/identity check at
+08:29 UTC on 22 October 2026, source `0ce05a235c26b0401535a3188eb7650293598f91`.
+Evidence artifact `12412546154` has ZIP digest
+`74695a48b0e5847a2d79da7df72003f268ddef7f3e9aaacb61578390eed67c66`.
+The initial repeat-launch failure was a test-cleanup mistake: the upstream
+test `tearDown()` destroys the store. The regression now detaches the
+coordinator and preserves the database for the second launch. No runtime
+persistence code was changed.
+
+Read-only Apple check [39746718005](https://github.com/jhardorp/LoopWorkspace/actions/runs/39746718005)
+confirmed the existing app is `6737123014` and its latest build is
+`3.14.9 (26)`, VALID and IN_BETA_TESTING. The owner-authorized upload is for
+that existing app, not the separate `Loop Next AI` installation.

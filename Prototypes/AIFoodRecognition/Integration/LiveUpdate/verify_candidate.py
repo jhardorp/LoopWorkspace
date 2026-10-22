@@ -58,7 +58,9 @@ def verify(directory):
             assert item['CFBundleShortVersionString'] == '3.15.2' and item['CFBundleVersion'] == '27'
             companions.append(item['CFBundleIdentifier'])
         assert sorted(companions) == sorted(BUNDLE + '.' + name for name in ['Loop-Intent-Extension', 'LoopWidgetExtension', 'LoopWatch'])
-    record = {**original, 'signature_verified': True, 'companions_verified': companions,
+    record = {**original, 'original_archive_restriction': original['restriction'],
+              'restriction': 'Experimental normal-identity update requested by owner. Independent therapy validation pending; data-compatible downgrade not guaranteed.',
+              'signature_verified': True, 'companions_verified': companions,
               'migration_checks': 'four Simulator cases required by workflow',
               'independently_validated_for_therapy': False, 'device_installed': False}
     (directory / 'VerifiedLiveCandidate.json').write_text(json.dumps(record, indent=2) + '\n')

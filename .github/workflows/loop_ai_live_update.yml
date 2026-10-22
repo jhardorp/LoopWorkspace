@@ -49,7 +49,8 @@ jobs:
   migration:
     if: >-
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
-      !contains(github.event.head_commit.message, '[live-update-status]')
+      !contains(github.event.head_commit.message, '[live-update-status]') &&
+      !contains(github.event.head_commit.message, '[live-update-upload]')
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -129,5 +130,99 @@ jobs:
             ${{ runner.temp }}/ProductionMigration.xcresult
             ${{ runner.temp }}/ExistingIdentityCandidate/MigrationCandidate.json
             ${{ runner.temp }}/ExistingIdentityCandidate/VerifiedLiveCandidate.json
+          if-no-files-found: warn
+          retention-days: 14
+  upload_retained:
+    name: Publish the owner-authorized update under the existing Loop identity
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[live-update-upload]')
+    runs-on: macos-15
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require successful migration and original build evidence
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {data: migration} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: 39747429039});
+            if (migration.head_sha !== '0ce05a235c26b0401535a3188eb7650293598f91' ||
+                migration.conclusion !== 'success' || migration.head_branch !== 'migration/loop4-ai-photo') {
+              throw new Error('The four migration tests and signature verification must pass before upload.');
+            }
+            const {data: jobs} = await github.rest.actions.listJobsForWorkflowRun({...context.repo, run_id: migration.id, filter: 'latest', per_page: 100});
+            const job = jobs.jobs.find(job => job.name === 'migration');
+            for (const name of ['Run upstream and production-format migration tests', 'Verify the unchanged IPA signature and complete app identity']) {
+              if (job?.conclusion !== 'success' || !job.steps.some(step => step.name === name && step.conclusion === 'success')) {
+                throw new Error('Missing migration/signature evidence: ' + name);
+              }
+            }
+            const {data: original} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: 39565198453});
+            if (original.head_sha !== 'e768ff50dc335671f479543ccd5f3a525c733c20' || original.conclusion !== 'success') {
+              throw new Error('The exact signed candidate must retain its original successful validation.');
+            }
+            const {data: artifact} = await github.rest.actions.getArtifact({...context.repo, artifact_id: 12332699181});
+            if (artifact.workflow_run.id !== original.id || artifact.expired || artifact.size_in_bytes !== 66740987 ||
+                artifact.digest !== 'sha256:85ac83f1adbb4ffee66b278ce3326dcb22ef91fe407cbdfe0044536ffe2d08b1') {
+              throw new Error('The retained signed artifact differs from the validated candidate.');
+            }
+            for (const [branch, sha] of [['feature/ai-food-recognition', 'cb4f6b1821489a27b06a36e378b0a7e5267bcbf1'], ['main', '548b33245198eaae165c094c9c68fe333cb69c05']]) {
+              const {data: ref} = await github.rest.git.getRef({...context.repo, ref: 'heads/' + branch});
+              if (ref.object.sha !== sha) throw new Error('Protected branch changed; inspect before publishing: ' + branch);
+            }
+      - name: Verify migration tests remain unchanged since the successful run
+        run: >-
+          git diff --exit-code 0ce05a235c26b0401535a3188eb7650293598f91 HEAD --
+          Prototypes/AIFoodRecognition/Integration/LiveUpdate/MigrationTests.swift
+          Prototypes/AIFoodRecognition/Integration/LiveUpdate/LegacyStoredSettings.json
+          Prototypes/AIFoodRecognition/Integration/LiveUpdate/prepare_checks.py
+      - name: Verify pinned sources and protected production files
+        run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12332699181'
+          run-id: '39565198453'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/ExistingIdentityCandidate
+          merge-multiple: true
+      - name: Verify the exact originally signed app without rebuilding
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/LiveUpdate/verify_candidate.py
+          "$RUNNER_TEMP/ExistingIdentityCandidate"
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Upload the verified update and check Apple processing
+        working-directory: Prototypes/AIFoodRecognition/Integration/LiveUpdate
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+          APPROVED_LIVE_UPDATE: com.279LYMG57A.loopkit.Loop
+          MIGRATION_CHECKS_RESULT: success
+        run: |
+          ruby -c fastlane/Fastfile
+          bundle exec fastlane ios inspect_production
+          bundle exec fastlane ios upload_verified_live_candidate
+      - name: Retain the unchanged package and upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: existing-loop-update-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ExistingIdentityCandidate/Loop.ipa
+            ${{ runner.temp }}/ExistingIdentityCandidate/MigrationCandidate.json
+            ${{ runner.temp }}/ExistingIdentityCandidate/VerifiedLiveCandidate.json
+            ${{ runner.temp }}/ExistingIdentityCandidate/LiveUploadStatus.json
+            ${{ runner.temp }}/LiveAppStatus.json
           if-no-files-found: warn
           retention-days: 14
