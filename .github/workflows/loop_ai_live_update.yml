@@ -10,11 +10,46 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: loop-ai-in-place-migration
+  group: loop-ai-in-place-${{ contains(github.event.head_commit.message, '[live-update-status]') && 'metadata' || 'migration' }}
   cancel-in-progress: false
 jobs:
+  production_status:
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      contains(github.event.head_commit.message, '[live-update-status]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Inspect the existing Loop TestFlight app without changing it
+        working-directory: Prototypes/AIFoodRecognition/Integration/LiveUpdate
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: |
+          ruby -c fastlane/Fastfile
+          bundle exec fastlane ios inspect_production
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: existing-loop-testflight-status-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/LiveAppStatus.json
+          if-no-files-found: warn
+          retention-days: 14
   migration:
-    if: github.ref == 'refs/heads/migration/loop4-ai-photo'
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      !contains(github.event.head_commit.message, '[live-update-status]')
     runs-on: macos-15
     timeout-minutes: 90
     steps:
