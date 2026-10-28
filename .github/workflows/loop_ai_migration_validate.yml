@@ -41,7 +41,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Test unchanged backend contract without deploying
+      - name: Test photo and description backend contracts without deploying
         working-directory: Prototypes/AIFoodRecognition/Backend
         run: |
           npm ci --no-audit --no-fund
@@ -127,8 +127,8 @@ jobs:
           from pathlib import Path
           log = (Path(os.environ['RUNNER_TEMP']) / 'LoopMigrationTests.log').read_text()
           passed = set(re.findall(r"MealPhotoMigrationTests (test\w+)\]' passed", log))
-          if len(passed) != 6:
-              raise SystemExit(f'Expected six native adapter cases; found {len(passed)}. Refusing an empty test run.')
+          if len(passed) != 7:
+              raise SystemExit(f'Expected seven native adapter cases; found {len(passed)}. Refusing an empty test run.')
           PY
       - name: Retain validation logs and test results
         if: always()

@@ -14,7 +14,8 @@ HERE = Path(__file__).resolve().parent
 if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("GITHUB_REF") != "refs/heads/migration/loop4-ai-photo":
     raise SystemExit("Migration CI checkout required")
 pin = subprocess.check_output(["git", "-C", str(ROOT / "LoopKit"), "rev-parse", "HEAD"], text=True).strip()
-assert pin == "031c16f574efaf73255b398d48479b19cd8d45b0"
+expected_pin = json.loads((HERE.parent / 'upstream-lock.json').read_text())['submodules']['LoopKit']
+assert pin == expected_pin
 
 def dates(value):
     if isinstance(value, dict):

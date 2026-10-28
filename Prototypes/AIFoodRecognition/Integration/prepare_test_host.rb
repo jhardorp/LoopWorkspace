@@ -1,12 +1,14 @@
 require 'xcodeproj'
 require 'fileutils'
+require 'json'
 
 abort('Unsigned adapter test host is restricted to migration CI') unless
   ENV['CI'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo'
 root = File.expand_path('../../..', __dir__)
 loop_dir = File.join(root, 'Loop')
 pin = IO.popen(['git', '-C', loop_dir, 'rev-parse', 'HEAD'], &:read).strip
-abort('Unexpected Loop pin') unless pin == 'b55744981c2e589799754d19f73b8912c8809e12'
+expected_pin = JSON.parse(File.read(File.join(__dir__, 'upstream-lock.json'))).fetch('submodules').fetch('Loop')
+abort('Unexpected Loop pin') unless pin == expected_pin
 main = File.join(loop_dir, 'Loop/main.swift')
 abort('Unexpected application entry point') unless File.read(main).include?('NSStringFromClass(AppDelegate.self)')
 FileUtils.cp(File.join(__dir__, 'TestHostMain.swift'), main)

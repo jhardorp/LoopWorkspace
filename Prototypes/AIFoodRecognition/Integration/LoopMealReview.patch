@@ -113,7 +113,7 @@ index ef658d7..f178338 100644
      }
  
 diff --git a/Loop/Views/CarbEntryView.swift b/Loop/Views/CarbEntryView.swift
-index 0411899..c42acca 100644
+index 0411899..65ae1a7 100644
 --- a/Loop/Views/CarbEntryView.swift
 +++ b/Loop/Views/CarbEntryView.swift
 @@ -9,6 +9,7 @@
@@ -133,7 +133,7 @@ index 0411899..c42acca 100644
 +    @State private var usesFoodDescriptionEditor = false
 +
 +    private struct MealReviewSource: Identifiable {
-+        enum Kind { case camera, photoLibrary }
++        enum Kind { case camera, photoLibrary, description }
 +        let id: UUID
 +        let kind: Kind
 +    }
@@ -149,7 +149,7 @@ index 0411899..c42acca 100644
 +            if row != .foodType { foodDescriptionFocused = false }
 +        }
 +        .sheet(item: $mealReviewSource, onDismiss: viewModel.cancelPhotoReview) { source in
-+            FoodRecognitionView(startsWithCamera: source.kind == .camera, startsWithPhotoLibrary: source.kind == .photoLibrary) { meal in
++            FoodRecognitionView(startsWithCamera: source.kind == .camera, startsWithPhotoLibrary: source.kind == .photoLibrary, startsWithDescription: source.kind == .description) { meal in
 +                guard viewModel.applyPhotoReview(meal, request: source.id) else { return false }
 +                mealReviewSource = nil
 +                clearExpandedRow()
@@ -159,7 +159,7 @@ index 0411899..c42acca 100644
          .sheet(isPresented: $showAddFavoriteFood, onDismiss: clearExpandedRow) {
              FavoriteFoodAddEditView(carbsQuantity: $viewModel.carbsQuantity.wrappedValue, foodType: $viewModel.foodType.wrappedValue, absorptionTime: $viewModel.absorptionTime.wrappedValue, onSave: onFavoriteFoodSave(_:))
          }
-@@ -141,12 +163,35 @@ struct CarbEntryView: View, HorizontalSizeClassOverride {
+@@ -141,12 +163,43 @@ struct CarbEntryView: View, HorizontalSizeClassOverride {
              
              CardSectionDivider()
              
@@ -192,11 +192,19 @@ index 0411899..c42acca 100644
 +                        .frame(maxWidth: .infinity, alignment: .leading)
 +                }
 +                .accessibilityIdentifier("chooseMealPhotoInLoop")
++                CardSectionDivider()
++                Button {
++                    mealReviewSource = MealReviewSource(id: viewModel.beginPhotoReview(), kind: .description)
++                } label: {
++                    Label("Describe meal", systemImage: "text.bubble")
++                        .frame(maxWidth: .infinity, alignment: .leading)
++                }
++                .accessibilityIdentifier("describeMealInLoop")
 +            }
          }
          .padding(.vertical, 12)
          .padding(.horizontal)
-@@ -165,8 +210,53 @@ struct CarbEntryView: View, HorizontalSizeClassOverride {
+@@ -165,8 +218,53 @@ struct CarbEntryView: View, HorizontalSizeClassOverride {
      }
      
      private func clearExpandedRow() {
@@ -251,10 +259,10 @@ index 0411899..c42acca 100644
  
  // MARK: - Warnings & Alerts
 diff --git a/LoopTests/ViewModels/BolusEntryViewModelTests.swift b/LoopTests/ViewModels/BolusEntryViewModelTests.swift
-index dd26c27..9295e2d 100644
+index dd26c27..97e3ad9 100644
 --- a/LoopTests/ViewModels/BolusEntryViewModelTests.swift
 +++ b/LoopTests/ViewModels/BolusEntryViewModelTests.swift
-@@ -1070,3 +1070,129 @@ extension StoredGlucoseSample {
+@@ -1070,3 +1070,149 @@ extension StoredGlucoseSample {
          StoredGlucoseSample(startDate: date, quantity: .glucose(value: value))
      }
  }
@@ -276,6 +284,26 @@ index dd26c27..9295e2d 100644
 +
 +    private func meal() async throws -> MealPhotoTestReview {
 +        try await MealPhotoTestReview.make()
++    }
++
++    func testDescribedMealUsesReviewedValuesOnceWithoutSavingOrBolusing() async throws {
++        let delegate = Delegate()
++        let vm = CarbEntryViewModel(delegate: delegate)
++        let time = vm.time, request = vm.beginPhotoReview()
++        let reviewed = try await MealPhotoTestReview.make(fromDescription: true)
++        XCTAssertTrue(reviewed.apply(to: vm, request: request))
++        XCTAssertEqual(vm.carbsQuantity, 12.5)
++        XCTAssertEqual(vm.absorptionTime, 5430)
++        XCTAssertEqual(vm.time, time)
++        vm.carbsQuantity = 18
++        XCTAssertFalse(reviewed.apply(to: vm, request: request))
++        XCTAssertEqual(vm.carbsQuantity, 18)
++        let cancelled = vm.beginPhotoReview()
++        vm.cancelPhotoReview()
++        XCTAssertFalse(reviewed.apply(to: vm, request: cancelled))
++        XCTAssertTrue(delegate.carbEntriesAdded.isEmpty)
++        XCTAssertNil(delegate.enactedBolusUnits)
++        XCTAssertNil(vm.bolusViewModel)
 +    }
 +
 +    func testReviewedValuesStayEditableWithoutSavingOrBolusNavigation() async throws {

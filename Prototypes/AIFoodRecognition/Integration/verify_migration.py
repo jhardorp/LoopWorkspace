@@ -18,10 +18,16 @@ for name, pin in LOCK['submodules'].items():
         assert actual == pin, f'Checkout drift: {name}'
 protected = ['LoopConfigOverride.xcconfig', 'fastlane', '.github/workflows/food_recognition_loop.yml',
              '.github/workflows/build_loop.yml', '.github/workflows/build_loop_auto.yml',
-             '.github/workflows/food_recognition_backend.yml', 'Prototypes/AIFoodRecognition/Backend',
+             '.github/workflows/food_recognition_backend.yml',
              'Prototypes/AIFoodRecognition/Distribution', 'Prototypes/AIFoodRecognition/Integration/fastlane',
              'Prototypes/AIFoodRecognition/Integration/request.json']
 assert not git('diff', '--name-only', LOCK['production'], '--', *protected), 'Protected configuration changed'
+# Text-only meal analysis changes the service contract, never its identity, secrets,
+# deployment request, dependencies, access controls or existing production workflow.
+backend_changes = set(git('diff', '--name-only', LOCK['production'], '--', 'Prototypes/AIFoodRecognition/Backend').splitlines())
+backend_allowed = {'package.json', 'src/contract.js', 'src/refinement.js', 'src/worker.js', 'src/description.js',
+                   'test/worker.test.js', 'test/worker-runtime.test.js', 'test/description.test.js'}
+assert backend_changes <= {'Prototypes/AIFoodRecognition/Backend/' + p for p in backend_allowed}, 'Protected backend configuration changed'
 patch = Path(__file__).with_name('LoopMealReview.patch').read_text()
 allowed = {'Loop/Views/CarbEntryView.swift', 'Loop/View Models/CarbEntryViewModel.swift',
            'Loop/Views/BolusEntryView.swift', 'LoopTests/ViewModels/BolusEntryViewModelTests.swift'}

@@ -27,6 +27,10 @@ public struct MockFoodEstimator: FoodEstimating {
         }
     }
 
+    public func estimate(description: MealDescription) async throws -> EstimationOutcome {
+        try await estimate(photo: .demo)
+    }
+
     private static func fixture(for scenario: MockScenario) -> MealEstimate {
         let highFat = scenario == .highFatMeal
         let uncertain = scenario == .uncertainPortion

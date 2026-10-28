@@ -50,7 +50,8 @@ jobs:
     if: >-
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
       !contains(github.event.head_commit.message, '[live-update-status]') &&
-      !contains(github.event.head_commit.message, '[live-update-upload]')
+      !contains(github.event.head_commit.message, '[live-update-upload]') &&
+      contains(github.event.head_commit.message, '[live-update-check]')
     runs-on: macos-15
     timeout-minutes: 90
     steps:

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "check": "node --check src/worker.js && node --check src/contract.js && node --check src/auth.js && node --check src/refinement.js && node --check scripts/deploy.mjs && node --check scripts/deployment-settings.mjs && node --check scripts/check-configuration.mjs"
+    "check": "node --check src/worker.js && node --check src/contract.js && node --check src/auth.js && node --check src/refinement.js && node --check src/description.js && node --check scripts/deploy.mjs && node --check scripts/deployment-settings.mjs && node --check scripts/check-configuration.mjs"
   },
   "engines": {
     "node": ">=22"

@@ -21,13 +21,18 @@ final class MealPhotoTestReview {
     private init(_ meal: ReviewedMeal) { self.meal = meal }
     private enum FixtureError: Error { case missingDraft, reviewRejected }
 
-    static func make() async throws -> MealPhotoTestReview {
+    static func make(fromDescription: Bool = false) async throws -> MealPhotoTestReview {
         let session = MealEstimateSession()
-        await session.analyze(photo: .demo, using: MockFoodEstimator(delayNanoseconds: 0))
+        if fromDescription {
+            await session.analyze(description: try MealDescription("one tablespoon of honey"), using: MockFoodEstimator(scenario: .uncertainPortion, delayNanoseconds: 0))
+        } else {
+            await session.analyze(photo: .demo, using: MockFoodEstimator(delayNanoseconds: 0))
+        }
         guard var draft = session.draft else { throw FixtureError.missingDraft }
         draft.carbohydrateText = "12,5"
         draft.absorptionMinutesText = "90,5"
         draft.mealNotes = "Two large slices; banana not ripe"
+        draft.acknowledgesUncertainty = true
         session.edit(draft)
         var result: ReviewedMeal?
         guard session.finishReview(locale: Locale(identifier: "de_DE"), accept: { result = $0; return true }),
