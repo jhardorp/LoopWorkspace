@@ -1,5 +1,11 @@
 # Experimental upstream migration — pinned Loop 4 development line
 
+## Current work — October 28, 2026
+
+The migration branch now includes text-only **Describe meal** input and the upstream workspace/dependency set from October 28 (`97b2cfc197caddc6b9e10d50e01e81ef4171fbfe`). This changed source is **not released**: 31 backend unit tests pass locally, while the Cloudflare runtime test is blocked by local socket permissions and fresh Swift/Simulator validation has not run. The existing app and backend have not been updated for this feature. See [the current implementation, compatibility comparison and precise verification status](Prototypes/AIFoodRecognition/Integration/TEXT_MEAL_UPDATE.md). The lock file is authoritative for current source pins; the sections and dependency table below describe the earlier build-27 release.
+
+## Earlier build-27 release — October 22, 2026
+
 No clinical use or insulin delivery from this migration until independently validated. After successful separate-app photo/UI testing, the owner explicitly requested an update of the working app. **Loop 3.15.2 (27) is now uploaded under the existing Loop identity, processed VALID and IN_BETA_TESTING at 2026-10-22 08:46:27 UTC.** Four old-format database migration cases and the original signed app's hash/signature/identity verification passed before publication. See [existing-app update evidence and installation details](Prototypes/AIFoodRecognition/Integration/LiveUpdate/README.md). No automated physical installation, backend deployment, production merge or production signing change was performed. Actual device migration and independent therapy validation remain outstanding. Earlier separate-test stages are retained below as historical evidence.
 
 ## Reproducible source selection

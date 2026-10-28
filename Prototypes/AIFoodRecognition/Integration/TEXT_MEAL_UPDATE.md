@@ -1,6 +1,6 @@
 # Text meal input and October 28 upstream update
 
-Status: implemented on `migration/loop4-ai-photo`; fresh macOS Swift, Simulator and native adapter validation required before publication. This document does not authorize a deployment or replace independent clinical validation.
+Status: implemented on `migration/loop4-ai-photo`; **not released**. Fresh macOS Swift, Simulator and native adapter validation is required before publication. This document does not authorize a deployment or replace independent clinical validation.
 
 The carbohydrate editor now offers **Photograph meal**, **Choose photo** and **Describe meal**. For example, a user can submit “one tablespoon of honey” without supplying an image. The same AI review permits editing carbohydrate grams, absorption minutes and meal notes, displays uncertainty, supports follow-up corrections, and requires explicit reviewed confirmation before returning values to the native editor. The handoff never saves an entry, navigates to a bolus, or delivers insulin.
 
@@ -13,3 +13,10 @@ Upstream is pinned to LoopWorkspace `97b2cfc197caddc6b9e10d50e01e81ef4171fbfe` (
 Compared with the installed October 19 baseline (workspace `53253aaa774a95ea6e299cc1a2fabc4af861328c`, build 27), this brings upstream Current Setup/results, display options, daily insulin statistics, alarm sound improvements, device reliability changes and opt-in algorithm experiments. These are upstream changes; the custom overlay remains restricted to the native carbohydrate-input UI/model, food-description formatting on the bolus screen, and guarded tests. No custom dosing, pump, CGM or therapy-setting edits are included. New upstream experiments must retain their upstream defaults; no existing therapy configuration is reset or copied from the isolated test app.
 
 The normal bundle ID, App Group, production signing configuration, installed app and production branch are preserved while validation runs. The historical build-27 uploader is source-specific and is not reused for changed code. The separate test app remains separate. A new candidate needs its own signed-package identity and source checks before any authorized TestFlight publication.
+
+## Verification on October 28
+
+- Passed: 31/31 Node unit cases covering old photo/refinement paths and new descriptions; JavaScript and Python helper syntax; exact overlay application to the four fetched native files at the new Loop pin; all 24 committed gitlinks match the lock; protected production configuration is unchanged.
+- Blocked locally: the additional Miniflare Cloudflare-runtime case cannot open `127.0.0.1` because the executor sandbox returns `listen EPERM`. It remains a required, unskipped test in CI. No provider request was made by the local runtime attempt.
+- Not run for this source: Swift tests, the unsigned iOS Simulator build, normal Simulator startup, seven native handoff cases, and four settings/history migration cases. This Linux executor has no Swift or Xcode. GitHub reports no new Actions run for source `b936ee24600db0749415c0500cf3352fb624e251` after the branch update; the connected tools do not expose workflow dispatch. The expanded validation workflow contains all of these checks and does not deploy the backend, upload an app or install anything.
+- No new Worker version, signed app, TestFlight upload or device installation was produced. Existing build 27's earlier success is historical evidence and does not validate this changed source.

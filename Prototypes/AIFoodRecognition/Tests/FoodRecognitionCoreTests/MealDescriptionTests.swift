@@ -7,7 +7,7 @@ import XCTest
 
 @MainActor
 final class MealDescriptionTests: XCTestCase {
-    private let description = try! MealDescription("one tablespoon of honey")
+    private let mealDescription = try! MealDescription("one tablespoon of honey")
 
     private func fixture(_ scenario: MockScenario = .uncertainPortion) async throws -> MealEstimate {
         guard case .estimate(let estimate) = try await MockFoodEstimator(scenario: scenario, delayNanoseconds: 0).estimate(photo: .demo) else {
@@ -17,7 +17,7 @@ final class MealDescriptionTests: XCTestCase {
     }
 
     func testDescriptionTrimsAndBoundsUTF8WithoutRequiringAPhoto() throws {
-        XCTAssertEqual(try MealDescription(" \n one tablespoon of honey \n").text, description.text)
+        XCTAssertEqual(try MealDescription(" \n one tablespoon of honey \n").text, mealDescription.text)
         for invalid in ["", " \n", String(repeating: "é", count: 1025)] {
             XCTAssertThrowsError(try MealDescription(invalid)) { XCTAssertEqual($0 as? EstimationError, .invalidDescription) }
         }
@@ -28,7 +28,7 @@ final class MealDescriptionTests: XCTestCase {
         let estimate = try await fixture(), provider = DescriptionProvider(initial: .estimate(try await fixture()))
         let session = MealEstimateSession(), handoff = MealReviewHandoff()
         let request = handoff.begin()
-        await session.analyze(description: description, using: provider)
+        await session.analyze(description: mealDescription, using: provider)
         XCTAssertEqual(session.state, .reviewing(estimate))
         var deliveries = 0
         let accept: @MainActor (ReviewedMeal) -> Bool = { meal in
@@ -50,46 +50,46 @@ final class MealDescriptionTests: XCTestCase {
         XCTAssertFalse(session.finishReview(accept: accept))
         XCTAssertEqual(deliveries, 1)
         let inputs = await provider.descriptions
-        XCTAssertEqual(inputs, [description.text])
+        XCTAssertEqual(inputs, [mealDescription.text])
     }
 
     func testDescriptionRefinementCarriesSourceAndOrderedCorrectionsAndResetsReview() async throws {
         let original = try await fixture(), revised = try await fixture(.highFatMeal)
         let provider = DescriptionProvider(initial: .estimate(original), revised: .estimate(revised))
         let session = MealEstimateSession()
-        await session.analyze(description: description, using: provider)
+        await session.analyze(description: mealDescription, using: provider)
         var draft = try XCTUnwrap(session.draft); draft.acknowledgesUncertainty = true; session.edit(draft)
-        await session.refine(description: description, comment: "two tablespoons", using: provider)
+        await session.refine(description: mealDescription, comment: "two tablespoons", using: provider)
         XCTAssertEqual(session.state, .reviewing(revised))
         XCTAssertFalse(try XCTUnwrap(session.draft).acknowledgesUncertainty)
         let contexts = await provider.contexts
         XCTAssertEqual(contexts.first?.previousEstimate, original)
         XCTAssertEqual(contexts.first?.comments, ["two tablespoons"])
         let inputs = await provider.descriptions
-        XCTAssertEqual(inputs, [description.text, description.text])
+        XCTAssertEqual(inputs, [mealDescription.text, mealDescription.text])
     }
 
     func testFailedTextRefinementKeepsManualValuesAndQuestionHasNoFallback() async throws {
         let original = try await fixture(), session = MealEstimateSession()
         let provider = DescriptionProvider(initial: .estimate(original), revised: .needsMoreInformation("Level or heaped?"))
-        await session.analyze(description: description, using: provider)
+        await session.analyze(description: mealDescription, using: provider)
         var draft = try XCTUnwrap(session.draft); draft.carbohydrateText = "19"; session.edit(draft)
-        await session.refine(description: description, comment: "larger spoon", using: provider)
+        await session.refine(description: mealDescription, comment: "larger spoon", using: provider)
         XCTAssertEqual(session.draft, draft)
         XCTAssertEqual(session.refinementQuestion, "Level or heaped?")
         XCTAssertFalse(session.finishReview())
-        await session.refine(description: description, comment: " ", using: provider)
+        await session.refine(description: mealDescription, comment: " ", using: provider)
         XCTAssertEqual(session.refinementError, .invalidComment)
         XCTAssertEqual(session.draft, draft)
         session.reset()
-        await session.analyze(description: description, using: DescriptionProvider(initial: .needsMoreInformation("How much?")))
+        await session.analyze(description: mealDescription, using: DescriptionProvider(initial: .needsMoreInformation("How much?")))
         XCTAssertNil(session.draft)
         XCTAssertFalse(session.finishReview())
     }
 
     func testCancellationDiscardsLateTextResultAndCannotDeliver() async throws {
         let provider = SuspendedDescription(), session = MealEstimateSession()
-        let task = Task { await session.analyze(description: description, using: provider) }
+        let task = Task { await session.analyze(description: mealDescription, using: provider) }
         while !(await provider.started) { await Task.yield() }
         task.cancel(); session.reset()
         await provider.complete(.estimate(try await fixture()))
@@ -101,7 +101,7 @@ final class MealDescriptionTests: XCTestCase {
 
     func testNewPhotoSupersedesPendingDescriptionEvenIfProviderIgnoresCancellation() async throws {
         let provider = SuspendedDescription(), session = MealEstimateSession()
-        let task = Task { await session.analyze(description: description, using: provider) }
+        let task = Task { await session.analyze(description: mealDescription, using: provider) }
         while !(await provider.started) { await Task.yield() }
         let photo = try await fixture(.highFatMeal)
         await session.analyze(photo: .demo, using: DescriptionProvider(initial: .estimate(photo)))
@@ -118,10 +118,10 @@ final class MealDescriptionTests: XCTestCase {
         let client = try FoodBackendClient(serverAddress: "https://meal.example.workers.dev", transport: transport)
         let login = BackendSession(token: String(repeating: "a", count: 40), expiresAt: Date().addingTimeInterval(1800))
         let estimator = BackendFoodEstimator(client: client, session: login)
-        let initialOutcome = try await estimator.estimate(description: description)
+        let initialOutcome = try await estimator.estimate(description: mealDescription)
         XCTAssertEqual(initialOutcome, .estimate(estimate))
         let context = try MealRefinement(previousEstimate: estimate, comments: ["Two tablespoons"])
-        let revisedOutcome = try await estimator.refine(description: description, context: context)
+        let revisedOutcome = try await estimator.refine(description: mealDescription, context: context)
         XCTAssertEqual(revisedOutcome, .estimate(estimate))
         let requests = await transport.requests
         XCTAssertEqual(requests.count, 2)
@@ -130,7 +130,7 @@ final class MealDescriptionTests: XCTestCase {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer \(login.token)")
             let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
-            XCTAssertEqual(body["description"] as? String, description.text)
+            XCTAssertEqual(body["description"] as? String, mealDescription.text)
             XCTAssertNil(body["imageBase64"])
         }
         let initial = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(requests[0].httpBody)) as? [String: Any])
@@ -144,11 +144,11 @@ final class MealDescriptionTests: XCTestCase {
         let transport = DescriptionTransport(response: Data())
         let client = try FoodBackendClient(serverAddress: "https://meal.example.workers.dev", transport: transport)
         let expired = BackendSession(token: "expired", expiresAt: .distantPast)
-        do { _ = try await client.estimate(description: description, session: expired); XCTFail("Expected rejection") }
+        do { _ = try await client.estimate(description: mealDescription, session: expired); XCTFail("Expected rejection") }
         catch { XCTAssertEqual(error as? EstimationError, .authenticationRequired) }
         let task = Task {
             try? await Task.sleep(nanoseconds: 10_000_000_000)
-            return try await client.estimate(description: description, session: BackendSession(token: "valid", expiresAt: .distantFuture))
+            return try await client.estimate(description: mealDescription, session: BackendSession(token: "valid", expiresAt: .distantFuture))
         }
         task.cancel()
         do { _ = try await task.value; XCTFail("Expected cancellation") }
