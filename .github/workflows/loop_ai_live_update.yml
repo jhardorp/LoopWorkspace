@@ -114,7 +114,9 @@ jobs:
       github.repository == 'jhardorp/LoopWorkspace' &&
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
       github.event_name == 'workflow_dispatch' && inputs.operation == 'prepare_candidate'
-    runs-on: macos-15
+    # The standard arm64 pool can fail allocation before any step starts.
+    # GitHub's standard Intel image contains the same pinned Xcode build.
+    runs-on: macos-15-intel
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
@@ -123,7 +125,14 @@ jobs:
           submodules: recursive
           fetch-depth: 0
       - name: Select the validated Xcode version
-        run: sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          python3 - <<'PY'
+          import subprocess
+          actual = subprocess.check_output(['xcodebuild', '-version'], text=True).strip()
+          assert actual == 'Xcode 26.3\nBuild version 17C529', actual
+          print(actual)
+          PY
       - name: Verify pinned sources and protected production files
         run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
       - name: Check validation reuse guard and completed run

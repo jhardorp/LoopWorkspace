@@ -6,6 +6,8 @@ The operation requires the exact source SHA and run ID of a successful migration
 
 The existing Apple history must still end at build 27. The archive is verified as 3.15.2 (28), with the original application and companion identities, signed entitlements, provisioning App Group and normal entry point. Changed Apple history or missing existing signing fails the job; it does not renew or create certificates or profiles.
 
+The archive uses the standard `macos-15-intel` runner and requires exactly Xcode 26.3 (17C529), the validated toolchain. This avoids the arm64 pool's observed allocation failure; it does not use a paid larger-runner label. The iPhone target architecture and application source remain the same.
+
 The retained artifact contains `Loop.ipa`, `NextCandidate.json` and the validation proof. It contains the personal tester login and must remain private. A separately authorized publication must use that exact IPA and verify its hash and provenance. The artifact is retained for seven days. Engineering checks do not establish clinical safety or replace independent validation.
 
 Guard unit tests: `python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/verify_validation_test.py`.
