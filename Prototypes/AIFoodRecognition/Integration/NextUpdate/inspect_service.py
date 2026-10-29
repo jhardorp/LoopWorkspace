@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
 from urllib.request import Request, urlopen
 
 ACCOUNT = 'a1af98f116246104f077ba72071d4dad'
@@ -43,10 +44,10 @@ def inspect():
                  {'OPENAI_MODEL', 'DAILY_PHOTO_LIMIT', 'MINUTE_PHOTO_LIMIT'}}
     assert variables == {'OPENAI_MODEL': 'gpt-4.1-2025-04-14',
                          'DAILY_PHOTO_LIMIT': '1000', 'MINUTE_PHOTO_LIMIT': '60'}
-    health_request = Request(ADDRESS + '/health', headers={
-        'User-Agent': 'LoopMealReviewReleaseCheck/1.0', 'Accept': 'application/json'})
-    with urlopen(health_request, timeout=25) as response:
-        health = json.load(response)
+    health = json.loads(subprocess.check_output([
+        'curl', '--fail', '--silent', '--show-error', '--max-time', '25',
+        '--header', 'Accept: application/json', '--user-agent', 'LoopMealReviewReleaseCheck/1.0',
+        ADDRESS + '/health'], text=True))
     assert health.get('status') == 'ready' and health.get('features', {}).get('mealRefinement') is True
     assert health.get('photoLimits') == {'perDay': 1000, 'perMinute': 60}
     bundle = temporary / 'LoopDescriptionWorker/worker.js'
