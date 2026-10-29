@@ -43,7 +43,9 @@ def inspect():
                  {'OPENAI_MODEL', 'DAILY_PHOTO_LIMIT', 'MINUTE_PHOTO_LIMIT'}}
     assert variables == {'OPENAI_MODEL': 'gpt-4.1-2025-04-14',
                          'DAILY_PHOTO_LIMIT': '1000', 'MINUTE_PHOTO_LIMIT': '60'}
-    with urlopen(ADDRESS + '/health', timeout=25) as response:
+    health_request = Request(ADDRESS + '/health', headers={
+        'User-Agent': 'LoopMealReviewReleaseCheck/1.0', 'Accept': 'application/json'})
+    with urlopen(health_request, timeout=25) as response:
         health = json.load(response)
     assert health.get('status') == 'ready' and health.get('features', {}).get('mealRefinement') is True
     assert health.get('photoLimits') == {'perDay': 1000, 'perMinute': 60}
