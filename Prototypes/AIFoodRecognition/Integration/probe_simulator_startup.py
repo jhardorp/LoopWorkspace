@@ -40,7 +40,13 @@ def main():
 
     root = Path(__file__).resolve().parents[3]
     loop = root / "Loop"
-    if run("git", "-C", str(loop), "rev-parse", "HEAD").strip() != "b55744981c2e589799754d19f73b8912c8809e12":
+    expected = json.loads(Path(__file__).with_name("upstream-lock.json").read_text())["submodules"]["Loop"]
+    gitlink = run("git", "-C", str(root), "ls-tree", "HEAD", "--", "Loop").split()
+    if gitlink[:3] != ["160000", "commit", expected]:
+        raise SystemExit("Loop gitlink does not match the pinned dependency manifest.")
+    if not (loop / ".git").exists() or Path(run("git", "-C", str(loop), "rev-parse", "--show-toplevel").strip()).resolve() != loop.resolve():
+        raise SystemExit("Startup probe requires the initialized Loop submodule.")
+    if run("git", "-C", str(loop), "rev-parse", "HEAD").strip() != expected:
         raise SystemExit("Unexpected Loop source pin.")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
