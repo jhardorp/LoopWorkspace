@@ -20,4 +20,23 @@ The normal bundle ID, App Group, production signing configuration, installed app
 
 The preceding run passed the same 109 regression cases and build but stopped before launch because the startup helper still hard-coded the October 19 Loop pin. The helper now verifies the committed gitlink and initialized checkout against `upstream-lock.json`; the successful fresh run includes that correction.
 
-Protected signing, production workflows, deployment configuration and production branch remain unchanged. A new signed candidate can be prepared with [NextUpdate](NextUpdate/README.md) using existing read-only signing and proof that application/test sources still match this run. The backend's new `/v1/describe` endpoint is not yet published. Existing build 27's earlier success is historical evidence and is not substituted for this validation.
+Protected signing, production workflows, deployment configuration and production branch remain unchanged. The backend's new `/v1/describe` endpoint is not yet published. Existing build 27's earlier success is historical evidence and is not substituted for this validation.
+
+## Signed candidate, not uploaded
+
+[Archive run 40937665799](https://github.com/jhardorp/LoopWorkspace/actions/runs/40937665799) succeeded on the standard Intel macOS 15 image using exactly **Xcode 26.3 (17C529)** and existing read-only signing. Source `562919d74ff3b2ab1222e8c8ebc9e61c720ff01a` differs from the validated application only in guarded release automation and documentation. The package verifier checked the normal app identity, App Group, signed entitlements, provisioning identity, HealthKit entitlement, normal startup metadata, personal AI login and the three companion identities. No certificate, profile or identifier was created or renewed.
+
+| Candidate | Verified value |
+|---|---|
+| Version / build | **3.15.2 (28)** |
+| Application | `com.279LYMG57A.loopkit.Loop` |
+| App Group | `group.com.279LYMG57A.loopkit.LoopGroup` |
+| Minimum iOS | 17.6 |
+| Companions | Original intent extension, widget extension and watch app; version/build match |
+| IPA SHA-256 | `43465f88c4758bc36fc37982fa5ed79520ccb9071fd71fae98d24a3f19009986` |
+| Artifact | [12928092541](https://github.com/jhardorp/LoopWorkspace/actions/runs/40937665799/artifacts/12928092541); retained until November 5, 2026 |
+| Upload / device install / backend deployment | **None** |
+
+The first archive request never acquired a hosted arm64 runner and was cancelled by GitHub after capacity retries. The successful Intel request used the same Xcode build and unchanged application source. This was a runner allocation failure, not a compiler or signing failure.
+
+The new endpoint must be released to the existing Worker before the new input can work in the phone app. Public health currently confirms the old photo/refinement service is ready with the existing 1,000/day and 60/minute limits. The release remains experimental; engineering tests and packaging checks do not establish clinical safety, actual-device data migration or real text-analysis accuracy. The owner's migration requirement 9 requires explicit approval before a TestFlight upload or backend deployment. [NextUpdate](NextUpdate/README.md) documents the exact candidate preparation and read-only backend comparison.
