@@ -9,7 +9,7 @@ on:
     inputs:
       operation:
         type: choice
-        options: [inspect_status, prepare_candidate]
+        options: [inspect_status, inspect_service, prepare_candidate]
         default: inspect_status
         required: true
       validated_source:
@@ -22,7 +22,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: loop-ai-in-place-${{ contains(github.event.head_commit.message, '[live-update-status]') && 'metadata' || 'migration' }}
+  group: loop-ai-in-place-${{ (contains(github.event.head_commit.message, '[live-update-status]') || inputs.operation == 'inspect_status' || inputs.operation == 'inspect_service') && 'metadata' || 'migration' }}
   cancel-in-progress: false
 jobs:
   production_status:
@@ -59,6 +59,55 @@ jobs:
           path: ${{ runner.temp }}/LiveAppStatus.json
           if-no-files-found: warn
           retention-days: 14
+  inspect_description_service:
+    name: Prepare the description backend and inspect existing service without deployment
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'workflow_dispatch' && inputs.operation == 'inspect_service'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require the completed application and backend validation
+        env:
+          ACTIONS_READ_TOKEN: ${{ github.token }}
+          VALIDATED_SOURCE: ${{ inputs.validated_source }}
+          VALIDATION_RUN: ${{ inputs.validation_run }}
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+          python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/verify_validation.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test and bundle the description Worker without publishing
+        working-directory: Prototypes/AIFoodRecognition/Backend
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+          npm test
+          npx --no-install wrangler deploy --dry-run --outdir "$RUNNER_TEMP/LoopDescriptionWorker"
+      - name: Inspect current Worker identity, quota and server secret names
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/inspect_service.py
+      - name: Retain backend bundle and read-only comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: description-worker-candidate-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/LoopDescriptionWorker
+            ${{ runner.temp }}/DescriptionBackendCandidate.json
+            ${{ runner.temp }}/NextValidation.json
+          if-no-files-found: warn
+          retention-days: 7
   prepare_next_candidate:
     name: Prepare a signed candidate from a completed validation run
     if: >-

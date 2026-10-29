@@ -9,3 +9,5 @@ The existing Apple history must still end at build 27. The archive is verified a
 The retained artifact contains `Loop.ipa`, `NextCandidate.json` and the validation proof. It contains the personal tester login and must remain private. A separately authorized publication must use that exact IPA and verify its hash and provenance. The artifact is retained for seven days. Engineering checks do not establish clinical safety or replace independent validation.
 
 Guard unit tests: `python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/verify_validation_test.py`.
+
+The separate `inspect_service` operation reuses the same validation proof, reruns all backend checks, creates a Wrangler dry-run bundle and uses read-only Cloudflare GETs to record the existing Worker deployment, shared quota namespace, model, limits and secret names. It never retrieves secret values, writes settings, rotates secrets or invokes OpenAI. `DescriptionBackendCandidate.json` records the previous deployment and tested bundle hash for a separately authorized release.
