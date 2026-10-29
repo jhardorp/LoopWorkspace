@@ -1,8 +1,8 @@
 # Experimental Loop meal-photo migration
 
-This branch ports the existing photo review to the dependency set from LoopWorkspace next-dev `53253aaa774a95ea6e299cc1a2fabc4af861328c`, Loop `b55744981c2e589799754d19f73b8912c8809e12` (workspace version 3.15.2). The production feature branch remains unchanged.
+This branch ports the existing photo review to the dependency set from LoopWorkspace next-dev `97b2cfc197caddc6b9e10d50e01e81ef4171fbfe`, Loop `6441cb4e454fb9defadfd643df4dbb86fa6af54b` (workspace version 3.15.2), and adds text-only meal descriptions. The production feature branch remains unchanged.
 
-**Validation passed:** [run 39397041333](https://github.com/jhardorp/LoopWorkspace/actions/runs/39397041333) tested code commit `3ac9aed295a2fcacb34e8f71f7946fc55552d65f`: 58 Swift package tests, 26 backend tests, six native adapter tests, and the complete unsigned Simulator build. Xcode 26.3 (17C529).
+**Current validation passed:** [run 40886501697](https://github.com/jhardorp/LoopWorkspace/actions/runs/40886501697) tested code commit `23c4cc427d09bc1f489b81b533e1bdf9c93634e0`: 66 Swift package tests, 32 backend tests, seven native adapter tests, four settings/history migration tests, the complete unsigned Simulator build and normal application startup. Xcode 26.3. See [TEXT_MEAL_UPDATE.md](TEXT_MEAL_UPDATE.md) for the current comparison, release status and unresolved publication steps. Earlier validation runs describe the previous October 19 baseline.
 
 See [MIGRATION_LOOP4.md](../../../MIGRATION_LOOP4.md) for source pins, behavior comparison, test results and independent-validation requirements. See [SHARING.md](SHARING.md) for the reusable package/adapter boundary and instructions for other developers.
 
@@ -10,7 +10,7 @@ Camera/gallery review, comments, editable grams/minutes/notes, confidence warnin
 
 `apply.py` refuses a different Loop source commit. `verify_migration.py` checks source pins and protects production signing/backend/upload configuration. `configure_project.rb` links both package products; `configure_scheme.py` completes plugins before the app copies them.
 
-The host-dependent native test class is guarded by `MEAL_PHOTO_ADAPTER_TEST_HOST`, which only `prepare_test_host.rb` enables in the ephemeral CI project. Normal LoopTests builds therefore do not refer to the generated fixture. Migration CI also checks that all six adapter cases actually passed, so an absent flag cannot yield an empty success.
+The host-dependent native test class is guarded by `MEAL_PHOTO_ADAPTER_TEST_HOST`, which only `prepare_test_host.rb` enables in the ephemeral CI project. Normal LoopTests builds therefore do not refer to the generated fixture. Migration CI also checks that all seven adapter cases actually passed, so an absent flag cannot yield an empty success.
 
 Use only `.github/workflows/loop_ai_migration_validate.yml` on this branch. Its validation job runs tests and a fresh unsigned Simulator build, without Apple/AI credentials or paid AI calls. A follow-up probe ad-hoc signs a disposable copy for Simulator startup; it uses no Apple signing identity and produces no installable device build. Native tests still use a minimal generated Simulator host after the normal app build. Run these adapter tests through that workflow, which prepares the required host fixture. Both jobs pin Xcode 26.3. Existing production release workflows remain restricted to their original branch.
 

@@ -6,6 +6,18 @@ on:
       - 'Prototypes/AIFoodRecognition/Integration/LiveUpdate/**'
       - '.github/workflows/loop_ai_live_update.yml'
   workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [inspect_status, prepare_candidate]
+        default: inspect_status
+        required: true
+      validated_source:
+        type: string
+        required: false
+      validation_run:
+        type: string
+        required: false
 permissions:
   contents: read
   actions: read
@@ -16,7 +28,8 @@ jobs:
   production_status:
     if: >-
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
-      contains(github.event.head_commit.message, '[live-update-status]')
+      (contains(github.event.head_commit.message, '[live-update-status]') ||
+       (github.event_name == 'workflow_dispatch' && inputs.operation == 'inspect_status'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -46,6 +59,74 @@ jobs:
           path: ${{ runner.temp }}/LiveAppStatus.json
           if-no-files-found: warn
           retention-days: 14
+  prepare_next_candidate:
+    name: Prepare a signed candidate from a completed validation run
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'workflow_dispatch' && inputs.operation == 'prepare_candidate'
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Select the validated Xcode version
+        run: sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+      - name: Verify pinned sources and protected production files
+        run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - name: Check validation reuse guard and completed run
+        env:
+          ACTIONS_READ_TOKEN: ${{ github.token }}
+          VALIDATED_SOURCE: ${{ inputs.validated_source }}
+          VALIDATION_RUN: ${{ inputs.validation_run }}
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/verify_validation_test.py
+          python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/verify_validation.py
+      - name: Install pinned tools
+        run: bundle install
+      - name: Configure the normal app with reviewed meal input
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme.py
+          ruby -c Prototypes/AIFoodRecognition/Integration/NextUpdate/fastlane/Fastfile
+      - name: Configure the existing personal login
+        env:
+          FOOD_TESTER_ACCESS_CODE: ${{ secrets.FOOD_TESTER_ACCESS_CODE }}
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review.py
+          --plist Loop/Loop/Info.plist
+      - name: Archive using existing read-only signing
+        working-directory: Prototypes/AIFoodRecognition/Integration/NextUpdate
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          TEAMID: ${{ secrets.TEAMID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_READONLY: 'true'
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios prepare_candidate
+      - name: Verify package signature and unchanged normal app identity
+        run: python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/record_candidate.py
+      - name: Retain the unuploaded signed candidate and validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-loop-candidate-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            Loop.ipa
+            NextCandidate.json
+            ${{ runner.temp }}/NextValidation.json
+            buildlog
+          if-no-files-found: warn
+          retention-days: 7
   migration:
     if: >-
       github.ref == 'refs/heads/migration/loop4-ai-photo' &&
