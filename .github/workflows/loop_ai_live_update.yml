@@ -9,13 +9,17 @@ on:
     inputs:
       operation:
         type: choice
-        options: [inspect_status, inspect_service, prepare_candidate]
+        options: [inspect_status, inspect_service, prepare_candidate, publish_update]
         default: inspect_status
         required: true
       validated_source:
         type: string
         required: false
       validation_run:
+        type: string
+        required: false
+      release_confirmation:
+        description: Owner authorization for the exact reviewed build 28 and description backend
         type: string
         required: false
 permissions:
@@ -97,6 +101,30 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/inspect_service.py
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - name: Check the prepared publication controls without publishing
+        run: |
+          python3 -m unittest discover -s Prototypes/AIFoodRecognition/Integration/NextUpdate -p '*_test.py'
+          ruby -c Prototypes/AIFoodRecognition/Integration/NextUpdate/fastlane/Fastfile
+          ruby -c Prototypes/AIFoodRecognition/Integration/NextUpdate/upload.fastlane.rb
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12936348558'
+          run-id: '40962608601'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/DescriptionBaseline
+      - name: Verify exact app/backend artifacts and unchanged deployed backend
+        env:
+          ACTIONS_READ_TOKEN: ${{ github.token }}
+          VALIDATED_SOURCE: '23c4cc427d09bc1f489b81b533e1bdf9c93634e0'
+          VALIDATION_RUN: '40886501697'
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/release.py
+          preflight_backend "$RUNNER_TEMP/DescriptionBaseline"
       - name: Retain backend bundle and read-only comparison
         if: always()
         uses: actions/upload-artifact@v4
@@ -108,6 +136,121 @@ jobs:
             ${{ runner.temp }}/NextValidation.json
           if-no-files-found: warn
           retention-days: 7
+  publish_description_backend:
+    name: Publish the exact description backend after owner authorization
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'workflow_dispatch' && inputs.operation == 'publish_update' &&
+      inputs.release_confirmation == 'PUBLISH_LOOP_28_AND_TEXT_INPUT'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify protected production files
+        run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Prepare the exact tested Worker bundle
+        working-directory: Prototypes/AIFoodRecognition/Backend
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+          npm test
+          npx --no-install wrangler deploy --dry-run --outdir "$RUNNER_TEMP/LoopDescriptionWorker"
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12936348558'
+          run-id: '40962608601'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/DescriptionBaseline
+      - name: Publish while preserving existing server secrets and shared quota
+        env:
+          ACTIONS_READ_TOKEN: ${{ github.token }}
+          VALIDATED_SOURCE: '23c4cc427d09bc1f489b81b533e1bdf9c93634e0'
+          VALIDATION_RUN: '40886501697'
+          OWNER_AUTHORIZED_UPDATE: ${{ inputs.release_confirmation }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/release.py
+          publish_backend "$RUNNER_TEMP/DescriptionBaseline"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: description-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/DescriptionDeployStatus.json
+            ${{ runner.temp }}/DescriptionBackendCandidate.json
+            ${{ runner.temp }}/NextValidation.json
+          if-no-files-found: warn
+          retention-days: 14
+  publish_next_app:
+    name: Upload the exact signed build 28 after backend readiness
+    needs: publish_description_backend
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'workflow_dispatch' && inputs.operation == 'publish_update' &&
+      inputs.release_confirmation == 'PUBLISH_LOOP_28_AND_TEXT_INPUT'
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Select the existing upload toolchain and verify protected configuration
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12928092541'
+          run-id: '40937665799'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/NextReleaseCandidate
+      - name: Recheck the original signature, identity, hash and source evidence
+        env:
+          ACTIONS_READ_TOKEN: ${{ github.token }}
+          VALIDATED_SOURCE: '23c4cc427d09bc1f489b81b533e1bdf9c93634e0'
+          VALIDATION_RUN: '40886501697'
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/release.py
+          verify_app "$RUNNER_TEMP/NextReleaseCandidate"
+      - name: Install existing upload tools and check lane syntax
+        run: |
+          bundle install
+          ruby -c Prototypes/AIFoodRecognition/Integration/NextUpdate/upload.fastlane.rb
+      - name: Upload the retained IPA and verify Apple internal testing readiness
+        working-directory: Prototypes/AIFoodRecognition/Integration/NextUpdate
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          OWNER_AUTHORIZED_UPDATE: ${{ inputs.release_confirmation }}
+          BACKEND_RELEASE_RESULT: ${{ needs.publish_description_backend.result }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios publish_candidate
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loop-build-28-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/NextReleaseCandidate/VerifiedNextRelease.json
+            ${{ runner.temp }}/NextReleaseCandidate/NextUploadStatus.json
+            ${{ runner.temp }}/NextValidation.json
+          if-no-files-found: warn
+          retention-days: 14
   prepare_next_candidate:
     name: Prepare a signed candidate from a completed validation run
     if: >-

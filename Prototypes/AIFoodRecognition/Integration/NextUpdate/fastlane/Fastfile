@@ -2,6 +2,7 @@ require 'base64'
 require 'json'
 
 import File.join(ENV.fetch('GITHUB_WORKSPACE'), 'fastlane', 'Fastfile')
+import File.expand_path('../upload.fastlane.rb', __dir__)
 
 platform :ios do
   lane :prepare_candidate do

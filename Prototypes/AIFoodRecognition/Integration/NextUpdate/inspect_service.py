@@ -58,6 +58,7 @@ def inspect():
               'deployed': False, 'secrets_changed': False, 'paid_provider_requests': 0}
     (temporary / 'DescriptionBackendCandidate.json').write_text(json.dumps(record, indent=2) + '\n')
     print('Existing Worker, quota, model, server secret names and service health verified. No deployment or paid AI request.')
+    return record
 
 
 if __name__ == '__main__':
