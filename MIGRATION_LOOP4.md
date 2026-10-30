@@ -1,8 +1,10 @@
 # Experimental upstream migration — pinned Loop 4 development line
 
-## Current work — October 29, 2026
+## Current work — October 30, 2026
 
 The migration branch now includes text-only **Describe meal** input and the upstream workspace/dependency set from October 28 (`97b2cfc197caddc6b9e10d50e01e81ef4171fbfe`). [Fresh validation](https://github.com/jhardorp/LoopWorkspace/actions/runs/40886501697) passed **109 regression cases**, the full unsigned iOS Simulator build and normal application startup for source `23c4cc427d09bc1f489b81b533e1bdf9c93634e0`. The normal-identity **3.15.2 (28)** signed archive and package verification also [passed](https://github.com/jhardorp/LoopWorkspace/actions/runs/40937665799). It is **not released**: the existing app/backend have not been updated for this feature. See [the current implementation, compatibility comparison and verification status](Prototypes/AIFoodRecognition/Integration/TEXT_MEAL_UPDATE.md). The lock file is authoritative for current source pins; the sections and dependency table below describe the earlier build-27 release.
+
+The complete [publication preflight](https://github.com/jhardorp/LoopWorkspace/actions/runs/41079998020) also passed on October 30: eight release-proof regressions, Ruby lane syntax, immutable app/backend artifact evidence and an unchanged live backend comparison. The prepared manual release is awaiting the explicit upload/deployment permission required by migration requirement 9. No device installation is automated, and independent safety validation remains pending.
 
 ## Earlier build-27 release — October 22, 2026
 
