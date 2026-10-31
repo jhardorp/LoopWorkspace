@@ -1,0 +1,6 @@
+{
+  "NSHealthShareUsageDescription": "Health access is disabled in this isolated meal-photo test app. Test meals remain in memory.",
+  "NSHealthUpdateUsageDescription": "This isolated meal-photo test app does not save meals or other data to Apple Health.",
+  "NSSiriUsageDescription": "Siri features are disabled in this isolated meal-photo test app.",
+  "NSBluetoothAlwaysUsageDescription": "Pump, CGM, and other Bluetooth connections are disabled in this meal-photo test app."
+}

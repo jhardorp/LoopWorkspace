@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { instructions, modelSchema, validateAssessment } from "./contract.js";
 import { issueSession, validSession, sameAccessCode, loginIdentity } from "./auth.js";
 import { MAX_REFINEMENT_BYTES, parseRefinement, refinementInstructions, refinementPrompt } from "./refinement.js";
+import { MAX_DESCRIPTION_BYTES, parseDescription, descriptionInstructions, descriptionPrompt } from "./description.js";
 
 export const MAX_PHOTO_BYTES = 1024 * 1024;
 const MAX_PROVIDER_BYTES = 256 * 1024;
@@ -62,9 +63,9 @@ export function makeHandler({ providerFetch = fetch, now = () => Math.floor(Date
       const ready = configured(env);
       if (request.method === "GET" && url.pathname === "/health") {
         if (!ready) return json({ schemaVersion: 1, status: "setupRequired" }, 503);
-        return json({ schemaVersion: 1, status: "ready", photoLimits: photoLimits(env), features: { mealRefinement: true } });
+        return json({ schemaVersion: 1, status: "ready", photoLimits: photoLimits(env), features: { mealRefinement: true, mealDescription: true } });
       }
-      if (request.method !== "POST" || !["/v1/session", "/v1/estimate", "/v1/refine"].includes(url.pathname)) return failure("notFound", 404);
+      if (request.method !== "POST" || !["/v1/session", "/v1/estimate", "/v1/refine", "/v1/describe"].includes(url.pathname)) return failure("notFound", 404);
       if (!ready) return failure("serviceNotConfigured", 503);
       photoLimits(env);
       if (url.pathname === "/v1/session") {
@@ -83,7 +84,16 @@ export function makeHandler({ providerFetch = fetch, now = () => Math.floor(Date
       if (!/^[A-Za-z0-9._-]{1,80}$/.test(model)) return failure("serviceNotConfigured", 503);
       let bytes;
       let refinement;
-      if (url.pathname === "/v1/refine") {
+      let description;
+      if (url.pathname === "/v1/describe") {
+        if (request.headers.get("Content-Type")?.split(";")[0].trim() !== "application/json") return failure("invalidRequest", 400);
+        if (Number(request.headers.get("Content-Length")) > MAX_DESCRIPTION_BYTES) return failure("invalidRequest", 413);
+        let payload;
+        try { payload = await readBounded(request.body, MAX_DESCRIPTION_BYTES); }
+        catch { return failure("invalidRequest", 413); }
+        try { description = parseDescription(payload, model); }
+        catch { return failure("invalidDescription", 422); }
+      } else if (url.pathname === "/v1/refine") {
         if (request.headers.get("Content-Type")?.split(";")[0].trim() !== "application/json") return failure("invalidRequest", 400);
         if (Number(request.headers.get("Content-Length")) > MAX_REFINEMENT_BYTES) return failure("invalidRequest", 413);
         let payload;
@@ -111,8 +121,10 @@ export function makeHandler({ providerFetch = fetch, now = () => Math.floor(Date
           signal: controller.signal,
           body: JSON.stringify({
             model, store: false, background: false, max_output_tokens: 4000,
-            instructions: refinement ? `${instructions}\n${refinementInstructions}` : instructions,
-            input: [{ role: "user", content: [
+            instructions: description ? `${instructions}\n${descriptionInstructions}` : refinement ? `${instructions}\n${refinementInstructions}` : instructions,
+            input: [{ role: "user", content: description ? [
+              { type: "input_text", text: descriptionPrompt(description) },
+            ] : [
               { type: "input_text", text: refinement ? refinementPrompt(refinement) : "Analyze only this meal image. Return the structured estimate or a clarification request." },
               { type: "input_image", image_url: `data:image/jpeg;base64,${Buffer.from(bytes).toString("base64")}`, detail: "high" },
             ] }],
@@ -128,11 +140,14 @@ export function makeHandler({ providerFetch = fetch, now = () => Math.floor(Date
       if (result.status !== "completed" || !Array.isArray(result.output)) return failure("invalidResponse", 502);
       const content = result.output.filter((item) => item.type === "message").flatMap((item) => item.content ?? []);
       if (content.some((item) => item.type === "refusal")) {
-        return json({ schemaVersion: 1, status: "needsMoreInformation", estimate: null, reason: "The image could not be interpreted. Photograph just the meal and provide a clear portion view." });
+        return json({ schemaVersion: 1, status: "needsMoreInformation", estimate: null,
+          reason: description ? "The meal could not be estimated. Describe the food, portion and ingredients more clearly." : "The image could not be interpreted. Photograph just the meal and provide a clear portion view." });
       }
       try {
         const text = content.filter((item) => item.type === "output_text").map((item) => item.text).join("");
-        return json(validateAssessment(JSON.parse(text), model));
+        const assessment = validateAssessment(JSON.parse(text), model);
+        if (description && assessment.estimate) assessment.estimate.provenance += " Source: written meal description; no photo.";
+        return json(assessment);
       } catch { return failure("invalidResponse", 502); }
     } catch { return failure("serviceUnavailable", 503); }
   };
@@ -140,7 +155,7 @@ export function makeHandler({ providerFetch = fetch, now = () => Math.floor(Date
 
 export default { fetch: makeHandler() };
 
-/// Shared, transactional counters. Never stores images, estimates, raw IPs, glucose, or meal history.
+/// Shared counters. Never stores images, descriptions, estimates, raw IPs, glucose, or meal history.
 export class PrototypeQuota {
   constructor(state, env, clock = () => Math.floor(Date.now() / 1000)) { this.storage = state.storage; this.env = env; this.clock = clock; }
   async fetch(request) {

@@ -30,7 +30,7 @@ public struct BackendSession: Codable, Equatable, Sendable {
     }
 }
 
-/// A single-owner prototype backend. Receives only a current JPEG, with no therapy/history inputs.
+/// A single-owner backend. Receives the current meal input, with no therapy/history inputs.
 public struct FoodBackendClient: Sendable {
     public static let maximumPhotoBytes = 1024 * 1024
     public static let maximumResponseBytes = 256 * 1024
@@ -96,11 +96,37 @@ public struct FoodBackendClient: Sendable {
         return try decodeEstimate(await send(request))
     }
 
+    public func estimate(description: MealDescription, session: BackendSession) async throws -> EstimationOutcome {
+        try await describe(description, context: nil, session: session)
+    }
+
+    public func refine(description: MealDescription, context: MealRefinement, session: BackendSession) async throws -> EstimationOutcome {
+        let validated = try MealRefinement(previousEstimate: context.previousEstimate,
+                                           comments: context.comments, question: context.question)
+        guard validated.previousEstimate.confidence == .low else { throw EstimationError.invalidResponse }
+        return try await describe(description, context: validated, session: session)
+    }
+
+    private func describe(_ description: MealDescription, context: MealRefinement?, session: BackendSession) async throws -> EstimationOutcome {
+        try validateSession(session)
+        let validated = try MealDescription(description.text)
+        var request = makeRequest(path: "v1/describe")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(DescriptionRequest(description: validated.text, refinement: context))
+        guard let body = request.httpBody, body.count <= 128 * 1024 else { throw EstimationError.invalidDescription }
+        return try decodeEstimate(await send(request))
+    }
+
     private func validateInput(photo: MealPhoto, session: BackendSession) throws {
         guard photo.kind == .jpeg, photo.data.count <= Self.maximumPhotoBytes,
               photo.data.starts(with: [0xff, 0xd8]), photo.data.suffix(2) == Data([0xff, 0xd9]) else {
             throw EstimationError.invalidPhoto
         }
+        try validateSession(session)
+    }
+
+    private func validateSession(_ session: BackendSession) throws {
         guard session.expiresAt > Date(), !session.token.isEmpty,
               session.token.utf8.count <= 2048, !session.token.contains(where: { $0.isWhitespace }) else {
             throw EstimationError.authenticationRequired
@@ -141,7 +167,7 @@ public struct FoodBackendClient: Sendable {
             case 429: throw EstimationError.rateLimited
             case 408, 504: throw EstimationError.timedOut
             case 413, 415: throw EstimationError.invalidPhoto
-            case 422: throw EstimationError.invalidComment
+            case 422: throw request.url?.path == "/v1/describe" ? EstimationError.invalidDescription : .invalidComment
             case 500...599: throw EstimationError.serviceUnavailable
             default: throw EstimationError.invalidResponse
             }
@@ -166,6 +192,10 @@ public struct FoodBackendClient: Sendable {
         let imageBase64: String
         let refinement: MealRefinement
     }
+    private struct DescriptionRequest: Encodable {
+        let description: String
+        let refinement: MealRefinement?
+    }
     private struct EstimateEnvelope: Decodable {
         let schemaVersion: Int
         let status: String
@@ -189,5 +219,13 @@ public struct BackendFoodEstimator: FoodEstimating {
 
     public func refine(photo: MealPhoto, context: MealRefinement) async throws -> EstimationOutcome {
         try await client.refine(photo: photo, context: context, session: session)
+    }
+
+    public func estimate(description: MealDescription) async throws -> EstimationOutcome {
+        try await client.estimate(description: description, session: session)
+    }
+
+    public func refine(description: MealDescription, context: MealRefinement) async throws -> EstimationOutcome {
+        try await client.refine(description: description, context: context, session: session)
     }
 }

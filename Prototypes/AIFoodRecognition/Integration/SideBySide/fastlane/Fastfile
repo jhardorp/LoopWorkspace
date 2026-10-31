@@ -1,0 +1,291 @@
+require 'base64'
+require 'fileutils'
+require 'json'
+require 'openssl'
+require 'digest'
+require 'time'
+
+default_platform(:ios)
+opt_out_usage
+
+platform :ios do
+  desc 'Correct only the empty user-created test record; preserve developer identifiers'
+  lane :repair_app_record do
+    identity = 'com.jhardorp.loopaiphototest'
+    old_identity = 'com.279LYMG57A.loopkit.Loop.LoopWidgetExtension'
+    UI.user_error!('Approved isolated migration app record required') unless
+      ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo' &&
+      ENV['APPROVED_SANDBOX_RECORD'] == identity
+    app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),
+                              issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
+                              key_content: ENV.fetch('FASTLANE_KEY'))
+    app = Spaceship::ConnectAPI::App.find(identity)
+    unless app
+      UI.user_error!('Separate developer identifier is missing') unless Spaceship::ConnectAPI::BundleId.find(identity)
+      candidates = Spaceship::ConnectAPI::App.all.select do |record|
+        record.name == 'Loop AI Test jhardorp' && record.bundle_id == old_identity
+      end
+      UI.user_error!('Expected exactly the empty test record identified in the visibility check') unless candidates.length == 1
+      candidate = candidates.first
+      UI.user_error!('Refusing to change any app record that has uploaded builds') unless
+        Spaceship::ConnectAPI::Build.all(app_id: candidate.id).empty?
+      # Change the App Store Connect test record only. This does not change the
+      # registered widget identifier, its signing profile, or the production app.
+      UI.message('The user-created test record has no builds; correcting only its bundle ID.')
+      candidate.update(attributes: {bundle_id: identity})
+      # Apple can return stale bundle-ID collection results just after PATCH.
+      12.times do
+        app = Spaceship::ConnectAPI::App.get(app_id: candidate.id)
+        UI.user_error!('Corrected record ID changed unexpectedly') unless app && app.id == candidate.id
+        break if app.bundle_id == identity
+        sleep(5)
+      end
+    end
+    UI.user_error!('The correct separate app record is still unavailable') unless app && app.bundle_id == identity
+    UI.success("The separate app record is ready: #{identity}. No developer identifier, signing or installed app was changed; no upload occurred.")
+  end
+
+  desc 'Read-only visibility check; never create, sign, upload or distribute'
+  lane :check_app_record do
+    UI.user_error!('Migration Actions branch required') unless
+      ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo'
+    identity = 'com.jhardorp.loopaiphototest'
+    app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),
+                              issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
+                              key_content: ENV.fetch('FASTLANE_KEY'))
+    visible = Spaceship::ConnectAPI::App.all
+    app = visible.find { |record| record.bundle_id == identity }
+    related = visible.select { |record| record.name.to_s.match?(/Loop.*AI|AI.*Test/i) }
+    developer_bundle = Spaceship::ConnectAPI::BundleId.find(identity)
+    UI.message('APPLE_APP_RECORD_CHECK: ' + JSON.generate({
+      expected_bundle: identity, app_record_visible: !app.nil?, visible_app_count: visible.length,
+      developer_bundle_registered: !developer_bundle.nil?,
+      related_app_records: related.map { |record| {name: record.name, bundle: record.bundle_id} }
+    }))
+    if app
+      builds = Spaceship::ConnectAPI::Build.all(app_id: app.id).map do |build|
+        entry = {version: build.app_version, build: build.version, processing_state: build.processing_state}
+        unless build.build_beta_detail.nil?
+          entry[:ready_for_internal_testing] = build.ready_for_internal_testing?
+          entry[:missing_export_compliance] = build.missing_export_compliance?
+        end
+        entry
+      end
+      groups = app.get_beta_groups.select(&:is_internal_group)
+      UI.message('APPLE_TESTFLIGHT_CHECK: ' + JSON.generate({
+        bundle: identity, app_id: app.id, builds: builds, internal_group_count: groups.length,
+        checked_at: Time.now.utc.iso8601
+      }))
+      # Upload records remain useful when ingestion has not produced a Build yet.
+      uploads = Spaceship::ConnectAPI::BuildUpload.all(app_id: app.id)
+      UI.message('APPLE_UPLOAD_CHECK: ' + JSON.generate({
+        bundle: identity, uploads: uploads.map do |upload|
+          {version: upload.cf_build_short_version_string, build: upload.cf_build_version,
+           state: upload.state, uploaded_date: upload.uploaded_date}
+        end
+      }))
+    end
+  end
+
+  desc 'Upload only the exact isolated candidate explicitly approved by its owner'
+  lane :upload_approved_candidate do
+    UI.user_error!('Approved migration Actions upload required') unless
+      ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo' &&
+      ENV['APPROVED_SANDBOX_UPLOAD'] == '0.1.0 (12)'
+    identity = 'com.jhardorp.loopaiphototest'
+    directory = File.join(ENV.fetch('RUNNER_TEMP'), 'LoopAISandboxCandidate')
+    ipa = File.join(directory, 'LoopAIPhotoTest.ipa')
+    verified = JSON.parse(File.read(File.join(directory, 'VerifiedUpload.json')))
+    expected_hash = '9935a6db0619b37d92cd6a591cfd321e0cceecef39dc36193bcfdf33ae9b4416'
+    UI.user_error!('Unapproved IPA identity or content') unless
+      verified.fetch('bundle') == identity && verified.fetch('version') == '0.1.0' &&
+      verified.fetch('build') == '12' && verified.fetch('storage') == 'MemoryOnly' &&
+      verified.fetch('source') == '31b7bf86464c8033a3b5b6facf8df740600741dd' &&
+      verified.fetch('ipa_sha256') == expected_hash && Digest::SHA256.file(ipa).hexdigest == expected_hash
+    api_key = app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),
+                                      issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
+                                      key_content: ENV.fetch('FASTLANE_KEY'))
+    status = {bundle: identity, version: '0.1.0', build: '12', ipa_sha256: expected_hash,
+              upload_accepted: false, existing_build: false, processing_state: 'NOT_UPLOADED',
+              external_distribution: false, device_installed: false}
+    save_status = lambda do
+      status[:checked_at] = Time.now.utc.iso8601
+      File.write(File.join(directory, 'UploadStatus.json'), JSON.pretty_generate(status) + "\n")
+      UI.message("Loop AI Test upload status: #{JSON.generate(status)}")
+    end
+    begin
+      app = Spaceship::ConnectAPI::App.find(identity)
+      if app.nil?
+        # A Developer Portal identifier and an App Store Connect app record are
+        # separate objects. Report only related test-app records visible to this
+        # API connection so a wrong bundle ID can be distinguished from access.
+        visible = Spaceship::ConnectAPI::App.all
+        status[:app_record_visible] = false
+        status[:visible_app_count] = visible.length
+        status[:related_app_records] = visible.select do |record|
+          record.name.to_s.match?(/Loop.*AI|AI.*Test/i)
+        end.map { |record| {name: record.name, bundle: record.bundle_id} }
+        UI.message("Visible related test-app records: #{JSON.generate(status[:related_app_records])}")
+      end
+      UI.user_error!('The separate Loop AI Test App Store Connect record is missing') unless app && app.bundle_id == identity
+      status[:app_id] = app.id
+      UI.message('The separate Loop AI Test app record is present.')
+      find_build = lambda do
+        Spaceship::ConnectAPI::Build.all(app_id: app.id, version: '0.1.0', build_number: '12', platform: 'IOS').first
+      end
+      build = find_build.call
+      status[:existing_build] = !build.nil?
+      existing_upload = Spaceship::ConnectAPI::BuildUpload.all(app_id: app.id, version: '0.1.0', build_number: status[:build]).first
+      status[:existing_upload] = !existing_upload.nil?
+      status[:upload_accepted] = true if build || existing_upload
+      unless build || existing_upload
+        upload_to_testflight(api_key: api_key, app_identifier: identity, apple_id: app.id,
+                             ipa: ipa, skip_waiting_for_build_processing: true,
+                             skip_submission: true, distribute_external: false,
+                             notify_external_testers: false)
+        status[:upload_accepted] = true
+      end
+      status[:processing_state] = build ? build.processing_state : 'AWAITING_APPLE_RECORD'
+      save_status.call
+      deadline = Time.now + 20 * 60
+      loop do
+        build ||= find_build.call
+        ingestion = Spaceship::ConnectAPI::BuildUpload.all(app_id: app.id, version: '0.1.0', build_number: status[:build]).first
+        if ingestion
+          details = ingestion.state
+          ingestion_state = details.is_a?(Hash) ? details['state'] : details
+          status[:upload_processing_state] = ingestion_state
+          if ingestion_state == 'FAILED'
+            status[:processing_state] = 'FAILED'
+            status[:apple_errors] = details.is_a?(Hash) ? details['errors'] : []
+            save_status.call
+            UI.user_error!('Apple rejected upload processing; see UploadStatus.json for the actual validation errors')
+          end
+        end
+        if build
+          status[:build_id] = build.id
+          status[:processing_state] = build.processing_state
+          unless build.build_beta_detail.nil?
+            status[:ready_for_internal_testing] = build.ready_for_internal_testing?
+            status[:missing_export_compliance] = build.missing_export_compliance?
+          end
+          save_status.call
+          break if build.processed?
+        end
+        break if Time.now >= deadline
+        sleep(30)
+        build = nil
+      end
+      UI.user_error!('Apple rejected processing of this isolated test build; see UploadStatus.json') if
+        ['FAILED', 'INVALID'].include?(status[:processing_state])
+      if status[:processing_state] == 'VALID'
+        UI.success('Apple processed Loop AI Test 0.1.0 (12). No production app, tester group or device was changed.')
+      else
+        UI.important('Upload accepted; Apple processing is still pending. See UploadStatus.json for the actual status.')
+      end
+    rescue StandardError => error
+      status[:error_type] = error.class.name
+      raise
+    ensure
+      save_status.call
+    end
+  end
+
+  desc 'Prepare only the separately identified AI test app; never upload or install'
+  lane :prepare_side_by_side do
+    UI.user_error!('Migration Actions branch required') unless
+      ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo'
+    root = ENV.fetch('GITHUB_WORKSPACE')
+    identity = 'com.jhardorp.loopaiphototest'
+    actual = IO.popen(['git', '-C', root, 'rev-parse', 'HEAD'], &:read).strip
+    UI.user_error!('Archive source differs from validated source') unless actual == ENV.fetch('GITHUB_SHA')
+    main = File.read(File.join(root, 'Loop/Loop/main.swift'))
+    UI.user_error!('Separate application entry point required') unless
+      main.include?('NSStringFromClass(AIPhotoSandboxAppDelegate.self)') && !main.include?('NSStringFromClass(AppDelegate.self)')
+    team = ENV.fetch('TEAMID')
+    UI.user_error!('Invalid Apple team') unless team.match?(/\A[A-Z0-9]{10}\z/)
+    api_key = app_store_connect_api_key(key_id: ENV.fetch('FASTLANE_KEY_ID'),
+                                      issuer_id: ENV.fetch('FASTLANE_ISSUER_ID'),
+                                      key_content: ENV.fetch('FASTLANE_KEY'))
+    setup_ci
+    authorization = Base64.strict_encode64("#{ENV.fetch('GITHUB_REPOSITORY_OWNER')}:#{ENV.fetch('GH_PAT')}")
+    puts "::add-mask::#{authorization}"
+    signing = File.join(ENV.fetch('RUNNER_TEMP'), 'LoopAISandboxSigning')
+    FileUtils.mkdir_p(signing)
+    # Fetch the existing valid certificate and key read-only. No production profile, cert,
+    # production app record or signing-repository file is created or renewed.
+    match(type: 'appstore', api_key: api_key, team_id: team,
+          git_url: 'https://github.com/jhardorp/Match-Secrets.git',
+          git_basic_authorization: authorization,
+          app_identifier: ["com.#{team}.loopkit.Loop"],
+          readonly: true, skip_provisioning_profiles: true, output_path: signing)
+    certificates = Dir[File.join(signing, '*.cer')]
+    UI.user_error!('Expected one existing distribution certificate') unless certificates.length == 1
+    certificate_id = File.basename(certificates.first, '.cer')
+    certificate = OpenSSL::X509::Certificate.new(File.binread(certificates.first))
+    UI.user_error!('Existing distribution certificate is expired') unless certificate.not_after > Time.now
+    certificate_name = certificate.subject.to_a.find { |entry| entry[0] == 'CN' }&.[](1)
+    UI.user_error!('Existing signing certificate has no common name') if certificate_name.to_s.empty?
+
+    bundle = Spaceship::ConnectAPI::BundleId.find(identity)
+    bundle ||= Spaceship::ConnectAPI::BundleId.create(name: 'Loop AI Test', identifier: identity, platform: 'IOS')
+    UI.user_error!('Wrong separate bundle identifier') unless bundle.identifier == identity
+    # Sigh can create/download this app's profile using the selected existing
+    # certificate. It cannot issue certificates or modify the signing Git repo.
+    get_provisioning_profile(api_key: api_key, team_id: team,
+                                           app_identifier: identity, cert_id: certificate_id,
+                                           provisioning_name: 'Loop AI Test AppStore',
+                                           output_path: signing, filename: 'LoopAIPhotoTest.mobileprovision',
+                                           force: false)
+    # Sigh returns a profile UUID. Its downloaded file is a separate lane output.
+    profile_path = Actions.lane_context[SharedValues::SIGH_PROFILE_PATH]
+    UI.user_error!('Downloaded test profile is missing') unless
+      profile_path && File.file?(profile_path) && File.realpath(profile_path).start_with?(File.realpath(signing) + File::SEPARATOR)
+    profile = FastlaneCore::ProvisioningProfile.parse(profile_path)
+    UI.user_error!('Profile does not belong to the separate app') unless
+      profile.fetch('Entitlements').fetch('application-identifier').end_with?('.' + identity)
+    project = File.join(root, 'Loop/Loop.xcodeproj')
+    update_project_team(path: project, teamid: team)
+    update_code_signing_settings(path: project, use_automatic_signing: false, team_id: team,
+                                bundle_identifier: identity, code_sign_identity: certificate_name,
+                                profile_name: profile.fetch('Name'), targets: ['Loop'])
+    update_code_signing_settings(path: project, use_automatic_signing: false, team_id: team,
+                                code_sign_identity: certificate_name, targets: ['LoopCore', 'LoopCore-watchOS', 'LoopUI'])
+    artifacts = File.join(ENV.fetch('RUNNER_TEMP'), 'LoopAISandboxCandidate')
+    # Read-only certificate import with profiles skipped leaves a nil production
+    # profile in match's lane output. Gym merges that output unless it is reset.
+    # The sandbox has exactly one signable app and no companion extensions.
+    profile_mapping = {identity => profile.fetch('Name')}
+    Actions.lane_context[SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING] = profile_mapping
+    gym(workspace: File.join(root, 'LoopWorkspace.xcworkspace'), scheme: 'LoopAIPhotoTest',
+        configuration: 'Release', destination: 'generic/platform=iOS',
+        xcargs: "-onlyUsePackageVersionsFromResolvedFile MAIN_APP_BUNDLE_IDENTIFIER=#{identity}",
+        export_method: 'app-store', export_team_id: team, skip_profile_detection: true,
+        export_options: {signingStyle: 'manual', provisioningProfiles: profile_mapping},
+        output_directory: artifacts, output_name: 'LoopAIPhotoTest.ipa',
+        buildlog_path: File.join(artifacts, 'logs'))
+    app_record = Spaceship::ConnectAPI::App.find(identity)
+    creation_attempted = app_record.nil?
+    creation_error = nil
+    if app_record.nil?
+      begin
+        # A private, empty record for this new ID only. No binary is uploaded,
+        # no tester is invited and nothing is submitted or published.
+        Spaceship::ConnectAPI::App.create(name: 'Loop AI Test jhardorp', version_string: '0.1.0',
+                                         sku: 'loop-ai-photo-test', primary_locale: 'en-US',
+                                         bundle_id: identity, platforms: ['IOS'])
+        app_record = Spaceship::ConnectAPI::App.find(identity)
+      rescue StandardError => error
+        creation_error = error.class.name
+        UI.important('The signed archive is ready, but automatic app-record creation is unavailable with this API connection. AppRecordStatus.json records the remaining setup.')
+      end
+    end
+    File.write(File.join(artifacts, 'AppRecordStatus.json'), JSON.pretty_generate({
+      bundle: identity, app_record_exists: !app_record.nil?, uploaded: false,
+      creation_attempted: creation_attempted, creation_error_type: creation_error,
+      note: 'App Store Connect app record is required before a future explicitly approved TestFlight upload.'
+    }) + "\n")
+    UI.message("Separate app record exists: #{!app_record.nil?}; uploaded: false")
+    UI.success('Separate Loop AI Test archive prepared. No TestFlight upload, device installation, production provisioning changes or deployment.')
+  end
+end

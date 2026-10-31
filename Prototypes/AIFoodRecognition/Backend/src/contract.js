@@ -16,7 +16,7 @@ export const modelSchema = object({
   reason: text, estimate: { anyOf: [meal, { type: "null" }] },
 });
 
-export const instructions = `You analyze only the current meal image for a standalone research prototype.
+export const instructions = `You analyze only the current meal input for a standalone research prototype.
 Identify plausible foods and estimated portions with honest lower/upper ranges. Include fat, protein, fiber,
 carbohydrate type and preparation/glycemic characteristics. Carbohydrate grams mean total carbohydrate including
 fiber; never silently subtract fiber. Ingredient and nutrition values are inferred, not database verified.

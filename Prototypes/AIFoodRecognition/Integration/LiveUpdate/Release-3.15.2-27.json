@@ -1,0 +1,40 @@
+{
+  "source": "e768ff50dc335671f479543ccd5f3a525c733c20",
+  "bundle": "com.279LYMG57A.loopkit.Loop",
+  "version": "3.15.2",
+  "build": "27",
+  "ipa_sha256": "d078c42e33663dbefa601d33275b8b99162b82f9b35ba12fe53defe03ad48b34",
+  "app_id": "6737123014",
+  "upload_accepted": true,
+  "processing_state": "VALID",
+  "external_distribution": false,
+  "device_installed": false,
+  "independently_validated_for_therapy": false,
+  "checked_at": "2026-10-22T08:46:27Z",
+  "upload_processing_state": "COMPLETE",
+  "build_id": "204a741a-0a29-4525-a57c-355b063a5d70",
+  "internal_build_state": "IN_BETA_TESTING",
+  "missing_export_compliance": false,
+  "publishing_source": "c5ff6bfacb70ee52edb5a5896e42a4d406bebee3",
+  "publishing_run": 39748477901,
+  "publishing_job": 119722764592,
+  "transport_accepted_at": "2026-10-22T08:36:50Z",
+  "apple_processing_completed_at": "2026-10-22T08:46:26Z",
+  "artifact": {
+    "id": 12413795284,
+    "zip_sha256": "1a453361661e5c238303aeb3c14733fc6a7b30051e222508c49c897abaa66d42",
+    "expires_at": "2026-11-05T08:46:28Z"
+  },
+  "migration_checks": {
+    "run": 39747429039,
+    "source": "0ce05a235c26b0401535a3188eb7650293598f91",
+    "cases_passed": 4,
+    "failures": 0,
+    "synthetic_fixtures": true,
+    "actual_device_data_verified": false
+  },
+  "installation_verified": false,
+  "production_branch_merged": false,
+  "backend_deployed": false,
+  "signing_configuration_changed": false
+}

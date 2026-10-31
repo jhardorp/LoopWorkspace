@@ -14,6 +14,7 @@ final class PrototypeViewModel: ObservableObject {
     @Published private(set) var draft: ReviewDraft?
     @Published private(set) var reviewFinished = false
     @Published private(set) var photo: UIImage?
+    @Published private(set) var sourceDescription: String?
     @Published var refinementComment = ""
     @Published private(set) var refining = false
     @Published private(set) var refinementComments: [String] = []
@@ -36,7 +37,7 @@ final class PrototypeViewModel: ObservableObject {
     private var task: Task<Void, Never>?
     private var connectionTask: Task<Void, Never>?
     private var connectionID = UUID()
-    private var currentPhoto: MealPhoto?
+    private var currentInput: MealInput?
     private let connection: RememberedBackendConnection
 
     init() {
@@ -66,13 +67,13 @@ final class PrototypeViewModel: ObservableObject {
 
     var canRefine: Bool {
         guard mode == .openAI, canUseAI, !refining, !reviewFinished,
-              currentPhoto != nil, case .reviewing = state else { return false }
+              currentInput != nil, case .reviewing = state else { return false }
         return hasPendingComment
     }
 
     var estimateLabel: String {
         if refinementQuestion != nil { return "Previous estimate" }
-        return refinementComments.isEmpty ? "Photo estimate" : "Refined estimate"
+        return refinementComments.isEmpty ? (sourceDescription == nil ? "Photo estimate" : "Description estimate") : "Refined estimate"
     }
 
     func connect() {
@@ -174,8 +175,20 @@ final class PrototypeViewModel: ObservableObject {
             guard mode == .demo else { state = .failed(.invalidPhoto); return }
             input = .demo
         }
+        startAnalysis(.photo(input), estimator: estimator)
+    }
+
+    func analyzeDescription(_ text: String) {
+        clear()
+        guard mode != .openAI || canUseAI else { state = .failed(.authenticationRequired); return }
+        guard let description = try? MealDescription(text) else { state = .failed(.invalidDescription); return }
+        sourceDescription = description.text
+        startAnalysis(.description(description), estimator: mode == .demo ? MockFoodEstimator(scenario: scenario) : nil)
+    }
+
+    private func startAnalysis(_ input: MealInput, estimator: (any FoodEstimating)?) {
         state = .estimating
-        currentPhoto = input
+        currentInput = input
         task = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
             do {
@@ -184,7 +197,7 @@ final class PrototypeViewModel: ObservableObject {
                 else { provider = try await connection.estimator() }
                 try Task.checkCancellation()
                 syncConnection()
-                await session.analyze(photo: input, using: provider)
+                await session.analyze(input: input, using: provider)
                 guard !Task.isCancelled else { return }
                 sync()
                 if case .failed(.authenticationRequired) = state {
@@ -210,7 +223,7 @@ final class PrototypeViewModel: ObservableObject {
     }
 
     func refine() {
-        guard canRefine, let input = currentPhoto else { return }
+        guard canRefine, let input = currentInput else { return }
         let comment = refinementComment
         let oldCount = session.refinementComments.count
         refining = true
@@ -221,7 +234,7 @@ final class PrototypeViewModel: ObservableObject {
                 let provider = try await connection.estimator()
                 try Task.checkCancellation()
                 syncConnection()
-                await session.refine(photo: input, comment: comment, using: provider)
+                await session.refine(input: input, comment: comment, using: provider)
                 guard !Task.isCancelled else { return }
                 if session.refinementComments.count > oldCount { refinementComment = "" }
                 sync()
@@ -261,7 +274,8 @@ final class PrototypeViewModel: ObservableObject {
         task = nil
         session.reset()
         photo = nil
-        currentPhoto = nil
+        sourceDescription = nil
+        currentInput = nil
         refining = false
         refinementComment = ""
         sync()
@@ -289,11 +303,12 @@ final class PrototypeViewModel: ObservableObject {
         case .invalidPhoto: return "The photo could not be prepared. Try taking another meal photo."
         case .invalidResponse: return "The response failed validation and was discarded."
         case .authenticationRequired: return "The login was not accepted. Retry the connection; if the tester password was changed or revoked, enter the current password once."
-        case .rateLimited: return "Photo analysis reached a request limit. Try again later."
+        case .rateLimited: return "Meal analysis reached a request limit. Try again later."
         case .serviceUnavailable: return "The AI service is unavailable or still needs server setup. No estimate was produced."
         case .invalidConfiguration: return "Enter your tester password once (32 or more characters). The service address is prefilled; your OpenAI API key belongs on the server."
         case .uploadConsentRequired: return "Photograph a meal to start analysis."
-        case .invalidComment: return "Add a short food or portion comment. Shorten long comments, or choose a new meal photo to start over."
+        case .invalidComment: return "Add a short food or portion comment. Shorten long comments, or start a new meal to begin again."
+        case .invalidDescription: return "Describe the food and amount, using up to 2,048 UTF-8 bytes. For example: one tablespoon of honey."
         }
     }
 }
