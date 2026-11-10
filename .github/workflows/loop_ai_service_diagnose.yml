@@ -48,3 +48,40 @@ jobs:
           path: ${{ runner.temp }}/AIServiceDiagnostic.json
           if-no-files-found: warn
           retention-days: 7
+
+  app_status:
+    name: Inspect the current Loop TestFlight versions without changing distribution
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      (github.event_name == 'workflow_dispatch' ||
+       contains(github.event.head_commit.message, '[ai-app-status]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Read existing Apple build and internal testing status
+        working-directory: Prototypes/AIFoodRecognition/Integration/LiveUpdate
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios inspect_production
+      - name: Retain Apple status without credentials or tester details
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-ai-app-status-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/LiveAppStatus.json
+          if-no-files-found: warn
+          retention-days: 7
