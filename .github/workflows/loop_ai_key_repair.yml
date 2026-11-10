@@ -1,0 +1,92 @@
+name: Check or repair the Loop AI provider credential
+on:
+  push:
+    branches: ['migration/loop4-ai-photo']
+    paths:
+      - '.github/workflows/loop_ai_key_repair.yml'
+      - 'Prototypes/AIFoodRecognition/Integration/NextUpdate/repair_provider_key.mjs'
+      - 'Prototypes/AIFoodRecognition/Integration/NextUpdate/repair_provider_key.test.mjs'
+      - 'Prototypes/AIFoodRecognition/Integration/NextUpdate/credential-repair-request.json'
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [check, repair]
+        default: check
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: loop-ai-provider-credential
+  cancel-in-progress: false
+jobs:
+  credential:
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      (github.event_name == 'workflow_dispatch' ||
+       contains(github.event.head_commit.message, '[ai-key-check]') ||
+       contains(github.event.head_commit.message, '[apply-ai-key-repair]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify app and backend configuration and credential repair guards
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+          node --check Prototypes/AIFoodRecognition/Integration/NextUpdate/repair_provider_key.mjs
+          node --test Prototypes/AIFoodRecognition/Integration/NextUpdate/repair_provider_key.test.mjs
+      - name: Validate the provider key before any authorized secret update
+        id: repair
+        env:
+          AI_SERVICE_REPAIR_OPERATION: ${{ inputs.operation || (contains(github.event.head_commit.message, '[apply-ai-key-repair]') && 'repair' || 'check') }}
+          OWNER_AUTHORIZED_KEY_REPAIR: ${{ (inputs.operation == 'repair' || contains(github.event.head_commit.message, '[apply-ai-key-repair]')) && 'REPAIR_LOOP_AI_OPENAI_KEY' || '' }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FOOD_OPENAI_API_KEY: ${{ secrets.FOOD_OPENAI_API_KEY }}
+        run: node Prototypes/AIFoodRecognition/Integration/NextUpdate/repair_provider_key.mjs
+      - name: Prepare synthetic photo verification after an applied repair
+        if: steps.repair.outputs.applied == 'true'
+        run: |
+          npm install --prefix "$RUNNER_TEMP/LoopPhotoCheck" --no-save --no-package-lock --no-audit --no-fund --ignore-scripts jpeg-js@0.4.4
+          node <<'JS'
+          const fs = require("node:fs");
+          const jpeg = require(process.env.RUNNER_TEMP + "/LoopPhotoCheck/node_modules/jpeg-js");
+          fs.writeFileSync(process.env.RUNNER_TEMP + "/LoopSyntheticPhoto.jpg",
+            jpeg.encode({ width: 256, height: 256, data: Buffer.alloc(256 * 256 * 4, 255) }, 60).data);
+          JS
+      - name: Verify text and photo analysis using the repaired live service
+        if: steps.repair.outputs.applied == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FOOD_OPENAI_API_KEY: ${{ secrets.FOOD_OPENAI_API_KEY }}
+          FOOD_TESTER_ACCESS_CODE: ${{ secrets.FOOD_TESTER_ACCESS_CODE }}
+        run: |
+          sleep 10
+          set +e
+          AI_DIAGNOSTIC_INPUT=description node Prototypes/AIFoodRecognition/Integration/NextUpdate/diagnose_service.mjs
+          text_result=$?
+          if [ -f "$RUNNER_TEMP/AIServiceDiagnostic.json" ]; then cp "$RUNNER_TEMP/AIServiceDiagnostic.json" "$RUNNER_TEMP/AITextVerification.json"; fi
+          AI_DIAGNOSTIC_INPUT=photo node Prototypes/AIFoodRecognition/Integration/NextUpdate/diagnose_service.mjs
+          photo_result=$?
+          if [ -f "$RUNNER_TEMP/AIServiceDiagnostic.json" ]; then cp "$RUNNER_TEMP/AIServiceDiagnostic.json" "$RUNNER_TEMP/AIPhotoVerification.json"; fi
+          test "$text_result" -eq 0 -a "$photo_result" -eq 0
+      - name: Retain sanitized credential and service results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-ai-credential-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/AIProviderCredentialRepair.json
+            ${{ runner.temp }}/AITextVerification.json
+            ${{ runner.temp }}/AIPhotoVerification.json
+          if-no-files-found: warn
+          retention-days: 7
