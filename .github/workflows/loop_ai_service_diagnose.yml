@@ -33,8 +33,18 @@ jobs:
         run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
       - name: Check diagnostic syntax
         run: node --check Prototypes/AIFoodRecognition/Integration/NextUpdate/diagnose_service.mjs
+      - name: Generate a synthetic JPEG without using a personal photo
+        run: |
+          npm install --prefix "$RUNNER_TEMP/LoopPhotoCheck" --no-save --no-package-lock --no-audit --no-fund --ignore-scripts jpeg-js@0.4.4
+          node <<'JS'
+          const fs = require("node:fs");
+          const jpeg = require(process.env.RUNNER_TEMP + "/LoopPhotoCheck/node_modules/jpeg-js");
+          const image = { width: 256, height: 256, data: Buffer.alloc(256 * 256 * 4, 255) };
+          fs.writeFileSync(process.env.RUNNER_TEMP + "/LoopSyntheticPhoto.jpg", jpeg.encode(image, 60).data);
+          JS
       - name: Check existing service and one synthetic meal without deployment
         env:
+          AI_DIAGNOSTIC_INPUT: 'photo'
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           FOOD_OPENAI_API_KEY: ${{ secrets.FOOD_OPENAI_API_KEY }}

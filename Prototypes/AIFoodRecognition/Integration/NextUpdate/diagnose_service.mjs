@@ -1,4 +1,4 @@
-import { writeFileSync, appendFileSync } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { validateAssessment } from "../../Backend/src/contract.js";
 
 const env = process.env;
@@ -9,13 +9,15 @@ if (env.GITHUB_ACTIONS !== "true" || env.GITHUB_REPOSITORY !== "jhardorp/LoopWor
 const HOST = "https://loop-plus-meal-review.jan-1af.workers.dev";
 const ACCOUNT = "a1af98f116246104f077ba72071d4dad";
 const DEFAULT_MODEL = "gpt-4.1-2025-04-14";
+const inputKind = env.AI_DIAGNOSTIC_INPUT === "photo" ? "photo" : "description";
+const successDiagnosis = inputKind === "photo" ? "service_healthy_for_synthetic_photo" : "service_healthy_for_synthetic_description";
 const codes = new Set(["insufficient_quota", "billing_hard_limit_reached", "invalid_api_key",
   "model_not_found", "rate_limit_exceeded", "account_deactivated", "permission_denied",
   "invalid_request_error", "invalidDescription", "invalidResponse", "rateLimited",
   "authenticationRequired", "serviceNotConfigured", "serviceUnavailable", "providerUnavailable",
   "timedOut", "notFound", "invalidRequest", "invalidPhoto"]);
 const report = { checkedAt: new Date().toISOString(), source: env.GITHUB_SHA, host: HOST,
-  deploymentModified: false, appModified: false, personalMealDataSent: false,
+  inputKind, deploymentModified: false, appModified: false, personalMealDataSent: false,
   workerAnalysisRequests: 0, directProviderProbeRequests: 0, checks: [], diagnosis: "incomplete" };
 function errorCode(body) {
   const candidate = typeof body?.error === "string" ? body.error : body?.error?.code;
@@ -91,11 +93,12 @@ async function run() {
     const tokenValid = typeof token === "string" && token.length <= 2055
       && /^Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test("Bearer " + token);
     check("worker_login", session, { validSessionReturned: session.status === 200 && tokenValid });
-    if (session.status === 200 && tokenValid && health.body?.features?.mealDescription === true) {
+    if (session.status === 200 && tokenValid && (inputKind === "photo" || health.body?.features?.mealDescription === true)) {
       report.workerAnalysisRequests++;
-      analysis = await request(HOST + "/v1/describe", { method: "POST", timeout: 65000,
-        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-        body: JSON.stringify({ description: "One level tablespoon of plain honey, one serving. No other food." }) });
+      const photo = inputKind === "photo" ? readFileSync(env.RUNNER_TEMP + "/LoopSyntheticPhoto.jpg") : null;
+      analysis = await request(HOST + (photo ? "/v1/estimate" : "/v1/describe"), { method: "POST", timeout: 65000,
+        headers: { "Content-Type": photo ? "image/jpeg" : "application/json", Authorization: "Bearer " + token },
+        body: photo ?? JSON.stringify({ description: "One level tablespoon of plain honey, one serving. No other food." }) });
       let validated = false;
       if (analysis.status === 200 && analysis.body?.schemaVersion === 1) {
         try {
@@ -105,14 +108,14 @@ async function run() {
           validated = true;
         } catch {}
       }
-      check("synthetic_description_analysis", analysis, {
+      check(inputKind === "photo" ? "synthetic_photo_analysis" : "synthetic_description_analysis", analysis, {
         validResponse: validated,
         outcome: validated ? analysis.body.status : null });
-      if (validated) report.diagnosis = "service_healthy_for_synthetic_description";
+      if (validated) report.diagnosis = successDiagnosis;
     }
   }
   let probe = null;
-  if (report.diagnosis !== "service_healthy_for_synthetic_description" && keyReady) {
+  if (report.diagnosis !== successDiagnosis && keyReady) {
     report.directProviderProbeRequests++;
     probe = await request("https://api.openai.com/v1/responses", {
       method: "POST", timeout: 45000,
@@ -120,12 +123,12 @@ async function run() {
       body: JSON.stringify({ model, input: "Reply with OK.", max_output_tokens: 16, store: false, background: false }) });
     check("minimal_repository_provider_probe", probe, { completed: probe.status === 200 && probe.body?.status === "completed" });
   }
-  if (report.diagnosis === "service_healthy_for_synthetic_description") return;
+  if (report.diagnosis === successDiagnosis) return;
   if (health.failure) report.diagnosis = "worker_network_or_timeout_failure";
   else if (health.status !== 200 || health.body?.status !== "ready") report.diagnosis = "worker_health_not_ready";
   else if (!testerReady) report.diagnosis = "repository_tester_credential_unavailable_or_invalid";
   else if (session?.status !== 200) report.diagnosis = session?.status === 429 ? "worker_login_throttled" : "worker_login_rejected_or_failed";
-  else if (health.body?.features?.mealDescription !== true) report.diagnosis = "deployed_description_feature_missing";
+  else if (inputKind === "description" && health.body?.features?.mealDescription !== true) report.diagnosis = "deployed_description_feature_missing";
   else if (probe?.error === "insufficient_quota" || probe?.error === "billing_hard_limit_reached") report.diagnosis = "repository_openai_key_quota_or_billing_error";
   else if (probe?.status === 401) report.diagnosis = "repository_openai_key_authentication_error";
   else if (probe?.error === "model_not_found") report.diagnosis = "repository_openai_model_unavailable";
@@ -139,4 +142,4 @@ console.log("AI_SERVICE_DIAGNOSTIC: " + JSON.stringify(report));
 if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY,
   "## Loop AI service diagnosis\n\nOnly sanitized HTTP/error codes and fixed synthetic inputs were used.\n\n"
   + "\u0060\u0060\u0060json\n" + JSON.stringify(report, null, 2) + "\n\u0060\u0060\u0060\n");
-if (report.diagnosis !== "service_healthy_for_synthetic_description") process.exitCode = 1;
+if (report.diagnosis !== successDiagnosis) process.exitCode = 1;
