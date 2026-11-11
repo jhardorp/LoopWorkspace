@@ -1,0 +1,858 @@
+name: Separate Loop AI test app
+on:
+  push:
+    branches: ['migration/loop4-ai-photo']
+    paths:
+      - 'Prototypes/AIFoodRecognition/Integration/SideBySide/**'
+      - '.github/workflows/loop_ai_sandbox.yml'
+  workflow_dispatch:
+    inputs:
+      prepare_signed_sandbox:
+        type: boolean
+        description: Prepare only the separately identified test-app archive; never upload or install
+        required: true
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: ${{ (contains(github.event.head_commit.message, '[full-loop-launch]') || contains(github.event.head_commit.message, '[full-loop-release-retained]')) && 'loop-ai-full-launch' || (contains(github.event.head_commit.message, '[full-loop-prepared]') && 'loop-ai-full-preparation' || ((contains(github.event.head_commit.message, '[sandbox-access-check]') || contains(github.event.head_commit.message, '[sandbox-repair-record]')) && 'loop-ai-app-record-check' || 'loop-ai-separate-test-app')) }}
+  cancel-in-progress: true
+jobs:
+  full_loop_testflight_status:
+    name: Read the uploaded full test build's actual internal state
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[full-loop-testflight-status]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Read exact uploaded app and build metadata only
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: |
+          ruby -c fastlane/Fastfile
+          bundle exec fastlane ios check_uploaded_testflight_status
+      - name: Retain actual TestFlight build state without distribution changes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-next-ai-testflight-readiness-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/FullTestFlightReadiness.json
+          if-no-files-found: warn
+          retention-days: 14
+  full_loop_preserve_retry_logs:
+    name: Preserve the first failed archive logs before the running retry retains its app
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[full-loop-preserve-retry-logs]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Require the exact small failed-attempt artifact
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {data: a} = await github.rest.actions.getArtifact({...context.repo, artifact_id: 12389665141});
+            if (a.name !== 'loop-next-ai-full-candidate-b2252d048821dff94db71aa06c9cc6c9b6cdf2d8' ||
+                a.workflow_run.id !== 39686356713 || a.size_in_bytes !== 4966 || a.expired ||
+                a.digest !== 'sha256:b09030592f0c4670205b324e57508d091e4e42b4d1ff8633167b1dfd57f37bf0') {
+              throw new Error('Unexpected old artifact; preserve it without deleting anything.');
+            }
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12389665141'
+          run-id: '39686356713'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/FirstArchiveFailure
+          merge-multiple: true
+      - name: Verify log-only contents and record a file manifest
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'FirstArchiveFailure'
+          files = [path for path in root.rglob('*') if path.is_file()]
+          assert files and all(path.suffix.lower() in ('.log', '.txt') for path in files), 'Not a log-only artifact'
+          manifest = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
+          (root / 'PreservedFileHashes.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          print('Preserving', len(files), 'failed-profile build log files; no app package.')
+          PY
+      - uses: actions/upload-artifact@v4
+        id: backup
+        with:
+          name: loop-next-ai-first-profile-failure-12389665141-${{ github.run_id }}
+          path: ${{ runner.temp }}/FirstArchiveFailure
+          if-no-files-found: error
+          retention-days: 14
+      - name: Release only the backed-up log artifact name for the active retry
+        uses: actions/github-script@v7
+        env:
+          BACKUP_ARTIFACT_ID: ${{ steps.backup.outputs.artifact-id }}
+        with:
+          script: |
+            const {data: backup} = await github.rest.actions.getArtifact({...context.repo, artifact_id: Number(process.env.BACKUP_ARTIFACT_ID)});
+            if (backup.workflow_run.id !== context.runId || backup.expired || backup.size_in_bytes <= 0 ||
+                backup.name !== 'loop-next-ai-first-profile-failure-12389665141-' + context.runId) throw new Error('Backup not verified');
+            const {data: jobs} = await github.rest.actions.listJobsForWorkflowRun({...context.repo, run_id: 39686356713, filter: 'latest', per_page: 100});
+            const active = jobs.jobs.find(job => job.id === 119546403149);
+            if (active?.status !== 'in_progress' || active.steps.some(step => step.name === 'Retain the separate full-app archive and signing evidence' && step.status !== 'pending')) {
+              throw new Error('Archive retention already started or retry ended; leave old artifact untouched.');
+            }
+            const {data: old} = await github.rest.actions.getArtifact({...context.repo, artifact_id: 12389665141});
+            if (old.workflow_run.id !== 39686356713 || old.size_in_bytes !== 4966 ||
+                old.digest !== 'sha256:b09030592f0c4670205b324e57508d091e4e42b4d1ff8633167b1dfd57f37bf0') throw new Error('Old artifact changed');
+            await github.rest.actions.deleteArtifact({...context.repo, artifact_id: 12389665141});
+            core.info('Failed-attempt logs preserved in artifact ' + backup.id + '; running retry can retain the signed candidate.');
+  full_loop_current_group:
+    name: Refresh the separate app's current App Group status
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      (contains(github.event.head_commit.message, '[full-loop-profile-current]') ||
+       contains(github.event.head_commit.message, '[full-loop-release-retained]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - uses: actions/download-artifact@v4
+        if: contains(github.event.head_commit.message, '[full-loop-profile-current]')
+        with:
+          name: loop-next-ai-simulator-94ffb564c891ae5e3355c250623dff4833a51022
+          github-token: ${{ github.token }}
+          run-id: 39676604275
+          path: ${{ runner.temp }}/FullLoopMetadataInput
+      - name: Inspect native plugin metadata in the retained compiled app
+        if: contains(github.event.head_commit.message, '[full-loop-profile-current]')
+        run: |
+          python3 - <<'PY'
+          import json, os, plistlib, zipfile
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'FullLoopMetadataInput/FullLoopSimulator.zip'
+          with zipfile.ZipFile(path) as archive:
+              for name in archive.namelist():
+                  if name.startswith('Loop.app/Frameworks/') and name.endswith('.framework/Info.plist'):
+                      info = plistlib.loads(archive.read(name))
+                      print('COMPILED_FRAMEWORK: ' + json.dumps({
+                          'path': name, 'principal_class': info.get('NSPrincipalClass'),
+                          'plugin_keys': {key: value for key, value in info.items() if 'Plugin' in key or 'Principal' in key}
+                      }))
+          PY
+      - name: Read the current group with an independent test-only profile
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          TEAMID: ${{ secrets.TEAMID }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: |
+          ruby -c fastlane/Fastfile
+          bundle exec fastlane ios check_current_group
+  full_loop_inspect:
+    name: Inspect retained full-app entitlement diagnostics
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[full-loop-inspect]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: loop-next-ai-full-validation-a001806a3bfd71316621c6fc499fb6fe599b5948
+          github-token: ${{ github.token }}
+          run-id: 39652563167
+          path: ${{ runner.temp }}/FullLoopDiagnostics
+      - name: Show Xcode's actual Simulator entitlement packaging
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          log = (Path(os.environ['RUNNER_TEMP']) / 'FullLoopDiagnostics/FullLoopSigning.log').read_text()
+          lines = log.splitlines()
+          for i, line in enumerate(lines):
+              if line.startswith('ProcessProductPackaging ') and 'Loop.app' in line:
+                  print('\n'.join(lines[i:i+35]))
+              if '-sectcreate __TEXT __entitlements' in line:
+                  print('SIMULATOR_SECTION: ' + re.search(r'-sectcreate __TEXT __entitlements \S+', line).group())
+          PY
+  full_loop_profile_check:
+    name: Verify only the separate app's Apple profile
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[full-loop-inspect]')
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Prepare only the test profile's project metadata
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+          bundle install
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/fastlane/Fastfile
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/prepare.rb
+      - name: Check the private group in the test profile without signing or upload
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          TEAMID: ${{ secrets.TEAMID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+          FULL_PROFILE_CHECK_ONLY: 'true'
+        run: bundle exec fastlane ios archive_candidate
+  validate:
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      !contains(github.event.head_commit.message, '[sandbox-upload-approved]') &&
+      !contains(github.event.head_commit.message, '[sandbox-access-check]') &&
+      !contains(github.event.head_commit.message, '[sandbox-repair-record]') &&
+      !contains(github.event.head_commit.message, '[full-loop-')
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Select pinned Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+      - name: Verify preserved production and test-only support
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/verify_product_test.py
+          swift test --package-path Prototypes/AIFoodRecognition/Integration/SideBySide/Support
+      - name: Install pinned project tools and validate generator syntax
+        run: |
+          bundle install
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/prepare.rb
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/fastlane/Fastfile
+      - name: Generate the separate native editor test app
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/SideBySide/prepare.rb
+          swift Prototypes/AIFoodRecognition/Integration/SideBySide/make_icon.swift Loop/Loop/MealPhotoSandboxAssets.xcassets
+      - name: Build the separate app unsigned
+        run: >-
+          bash Prototypes/AIFoodRecognition/Integration/build_simulator.sh "$RUNNER_TEMP/LoopAISandboxUnsigned.log"
+          -workspace LoopWorkspace.xcworkspace -scheme LoopAIPhotoTest
+          -destination 'generic/platform=iOS Simulator' -onlyUsePackageVersionsFromResolvedFile
+          -derivedDataPath "$RUNNER_TEMP/LoopAISandbox"
+          MAIN_APP_BUNDLE_IDENTIFIER=com.jhardorp.loopaiphototest
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-
+          CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= build
+      - name: Package the Simulator app with Xcode ad-hoc signing
+        run: >-
+          bash Prototypes/AIFoodRecognition/Integration/build_simulator.sh "$RUNNER_TEMP/LoopAISandboxSigning.log"
+          -workspace LoopWorkspace.xcworkspace -scheme LoopAIPhotoTest
+          -destination 'generic/platform=iOS Simulator' -onlyUsePackageVersionsFromResolvedFile
+          -derivedDataPath "$RUNNER_TEMP/LoopAISandbox"
+          MAIN_APP_BUNDLE_IDENTIFIER=com.jhardorp.loopaiphototest
+          CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-
+          CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= build
+      - name: Verify effective Simulator identity and isolation
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/verify_product.py
+          --app "$RUNNER_TEMP/LoopAISandbox/Build/Products/Debug-iphonesimulator/Loop.app"
+          --source "$GITHUB_SHA" --record "$RUNNER_TEMP/LoopAISandboxIsolation.json"
+      - name: Exercise native editor cancellation and test-only saving
+        run: |
+          device=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')
+          bash Prototypes/AIFoodRecognition/Integration/build_simulator.sh "$RUNNER_TEMP/LoopAISandboxUITests.log" \
+            -workspace LoopWorkspace.xcworkspace -scheme LoopAIPhotoTest \
+            -destination "platform=iOS Simulator,id=$device" -onlyUsePackageVersionsFromResolvedFile \
+            -derivedDataPath "$RUNNER_TEMP/LoopAISandbox" \
+            -resultBundlePath "$RUNNER_TEMP/LoopAISandboxUITests.xcresult" \
+            -only-testing:LoopAIPhotoSandboxUITests/SandboxUITests \
+            MAIN_APP_BUNDLE_IDENTIFIER=com.jhardorp.loopaiphototest \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= test
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          log = (Path(os.environ['RUNNER_TEMP']) / 'LoopAISandboxUITests.log').read_text()
+          passed = set(re.findall(r"SandboxUITests (test\w+)\]' passed", log))
+          if len(passed) != 2:
+              raise SystemExit(f'Expected two actual UI cases, found {len(passed)}')
+          PY
+      - name: Retain isolation and UI test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-ai-sandbox-validation-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/LoopAISandbox*.log
+            ${{ runner.temp }}/LoopAISandboxIsolation.json
+            ${{ runner.temp }}/LoopAISandboxUITests.xcresult
+          retention-days: 14
+  archive:
+    name: Prepare separate signed app without publishing
+    needs: validate
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.prepare_signed_sandbox) ||
+       (github.event_name == 'push' && contains(github.event.head_commit.message, '[sandbox-candidate]')))
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Select pinned Xcode and verify sources
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+          bundle install
+      - name: Generate the same isolated app from the validated source
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/SideBySide/prepare.rb
+          swift Prototypes/AIFoodRecognition/Integration/SideBySide/make_icon.swift Loop/Loop/MealPhotoSandboxAssets.xcassets
+      - name: Preserve the personal AI login in this separate app
+        env:
+          FOOD_TESTER_ACCESS_CODE: ${{ secrets.FOOD_TESTER_ACCESS_CODE }}
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review.py
+          --plist Loop/Loop/Info.plist
+      - name: Sign only the new app using the existing certificate
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          TEAMID: ${{ secrets.TEAMID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios prepare_side_by_side
+      - name: Verify exported IPA isolation and record its hash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess, tempfile, zipfile
+          from pathlib import Path
+          artifacts = Path(os.environ['RUNNER_TEMP']) / 'LoopAISandboxCandidate'
+          ipa = artifacts / 'LoopAIPhotoTest.ipa'
+          with tempfile.TemporaryDirectory() as temp:
+              with zipfile.ZipFile(ipa) as archive:
+                  archive.extractall(temp)
+              record = artifacts / 'SandboxCandidate.json'
+              subprocess.run(['python3', 'Prototypes/AIFoodRecognition/Integration/SideBySide/verify_product.py',
+                              '--app', str(Path(temp) / 'Payload/Loop.app'), '--source', os.environ['GITHUB_SHA'],
+                              '--record', str(record)], check=True)
+              data = json.loads(record.read_text())
+              data['ipa_sha256'] = hashlib.file_digest(ipa.open('rb'), 'sha256').hexdigest()
+              data['xcode'] = subprocess.check_output(['xcodebuild', '-version'], text=True).strip()
+              record.write_text(json.dumps(data, indent=2) + '\n')
+              print(json.dumps(data))
+          PY
+      - name: Retain the separate candidate for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-ai-separate-candidate-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/LoopAISandboxCandidate/LoopAIPhotoTest.ipa
+            ${{ runner.temp }}/LoopAISandboxCandidate/SandboxCandidate.json
+            ${{ runner.temp }}/LoopAISandboxCandidate/AppRecordStatus.json
+          if-no-files-found: error
+          retention-days: 7
+  full_loop_validate:
+    name: Validate the separate full Loop main app
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      (contains(github.event.head_commit.message, '[full-loop-candidate]') ||
+       contains(github.event.head_commit.message, '[full-loop-launch]'))
+    runs-on: macos-15-intel
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Select pinned Xcode and verify protected sources
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/verify_product_test.py
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/simulator_entitlements_test.py
+          swift test --package-path Prototypes/AIFoodRecognition
+      - name: Install pinned project tools and check syntax
+        run: |
+          bundle install
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/prepare.rb
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/fastlane/Fastfile
+          python3 -m py_compile Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/*.py
+      - name: Generate the full main app with separate identity and storage
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/prepare.rb
+          swift Prototypes/AIFoodRecognition/Integration/SideBySide/make_icon.swift Loop/Loop/MealPhotoFullTestAssets.xcassets
+      - name: Build the full app unsigned for Simulator
+        run: >-
+          bash Prototypes/AIFoodRecognition/Integration/build_simulator.sh "$RUNNER_TEMP/FullLoopUnsigned.log"
+          -workspace LoopWorkspace.xcworkspace -scheme LoopNextAI
+          -destination 'generic/platform=iOS Simulator' -onlyUsePackageVersionsFromResolvedFile
+          -derivedDataPath "$RUNNER_TEMP/FullLoop"
+          MAIN_APP_BUNDLE_IDENTIFIER=com.jhardorp.loopaiphototest
+          APP_GROUP_IDENTIFIER=group.com.jhardorp.loopaiphototest
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-
+          CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= build
+      - name: Package normal full Simulator startup with ad-hoc signing
+        run: >-
+          bash Prototypes/AIFoodRecognition/Integration/build_simulator.sh "$RUNNER_TEMP/FullLoopSigning.log"
+          -workspace LoopWorkspace.xcworkspace -scheme LoopNextAI
+          -destination 'generic/platform=iOS Simulator' -onlyUsePackageVersionsFromResolvedFile
+          -derivedDataPath "$RUNNER_TEMP/FullLoop"
+          MAIN_APP_BUNDLE_IDENTIFIER=com.jhardorp.loopaiphototest
+          APP_GROUP_IDENTIFIER=group.com.jhardorp.loopaiphototest
+          CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=-
+          CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= build
+      - name: Retain the compiled Simulator package for independent rechecking
+        run: >-
+          ditto -c -k --sequesterRsrc --keepParent
+          "$RUNNER_TEMP/FullLoop/Build/Products/Debug-iphonesimulator/Loop.app"
+          "$RUNNER_TEMP/FullLoopSimulator.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loop-next-ai-simulator-${{ github.sha }}
+          path: ${{ runner.temp }}/FullLoopSimulator.zip
+          retention-days: 7
+      - name: Verify full product identity, entitlements and native plugins
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/verify_product.py
+          --app "$RUNNER_TEMP/FullLoop/Build/Products/Debug-iphonesimulator/Loop.app"
+          --source "$GITHUB_SHA" --simulator --record "$RUNNER_TEMP/FullLoopProduct.json"
+      - name: Probe normal full-app startup in a disposable Simulator
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/probe_startup.py \
+            --app "$RUNNER_TEMP/FullLoop/Build/Products/Debug-iphonesimulator/Loop.app" \
+            --output "$RUNNER_TEMP/FullLoopStartup" > "$RUNNER_TEMP/FullLoopStartup.log" 2>&1 || {
+              cat "$RUNNER_TEMP/FullLoopStartup.log"
+              exit 1
+            }
+          cat "$RUNNER_TEMP/FullLoopStartup.log"
+      - name: Require successful native adapter and unchanged backend regressions
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const {data: run} = await github.rest.actions.getWorkflowRun({owner, repo, run_id: 39648420016});
+            if (run.conclusion !== 'success' || run.head_sha !== '3579b17eaf5d260cdc755130dfb24b280984ae37') {
+              throw new Error('The pinned normal full-app regression run must pass before this candidate is accepted.');
+            }
+      - name: Verify only candidate packaging differs from the validated normal app
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          paths = subprocess.check_output(['git', 'diff', '--name-only', '3579b17eaf5d260cdc755130dfb24b280984ae37', 'HEAD'], text=True).splitlines()
+          allowed = ('Prototypes/AIFoodRecognition/Integration/SideBySide/',)
+          assert all(path.startswith(allowed) or path == '.github/workflows/loop_ai_sandbox.yml' for path in paths), paths
+          PY
+      - name: Retain full-app validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-next-ai-full-validation-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/FullLoop*.log
+            ${{ runner.temp }}/FullLoopProduct.json
+            ${{ runner.temp }}/FullLoopStartup
+          retention-days: 14
+      - name: Clean up the disposable full-app Simulator
+        if: always()
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/probe_startup.py
+          --cleanup-only --output "$RUNNER_TEMP/FullLoopStartup"
+  full_loop_recheck:
+    name: Verify and launch the retained compiled full app
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[full-loop-release-retained]')
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Require unchanged application and packaging-generator source
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/verify_product_test.py
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/simulator_entitlements_test.py
+          python3 - <<'PY'
+          import subprocess
+          changed = subprocess.check_output(['git', 'diff', '--name-only', '94ffb564c891ae5e3355c250623dff4833a51022', 'HEAD'], text=True).splitlines()
+          prefix = 'Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/'
+          allowed = {'.github/workflows/loop_ai_sandbox.yml'} | {prefix + name for name in (
+              'README.md', 'fastlane/Fastfile', 'verify_product.py', 'verify_product_test.py', 'record_candidate.py')}
+          assert set(changed).issubset(allowed), changed
+          print('All application sources, dependency pins, native overlay and app generator match the compiled source.')
+          PY
+      - name: Require the exact compiled artifact and successful regression baseline
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const {data: baseline} = await github.rest.actions.getWorkflowRun({owner, repo, run_id: 39648420016});
+            if (baseline.conclusion !== 'success' || baseline.head_sha !== '3579b17eaf5d260cdc755130dfb24b280984ae37') throw new Error('Regression baseline did not pass.');
+            const {data: run} = await github.rest.actions.getWorkflowRun({owner, repo, run_id: 39676604275});
+            if (run.head_sha !== '94ffb564c891ae5e3355c250623dff4833a51022' || run.head_branch !== 'migration/loop4-ai-photo') throw new Error('Unexpected compiled source.');
+            const {data: jobs} = await github.rest.actions.listJobsForWorkflowRun({owner, repo, run_id: 39676604275, filter: 'latest'});
+            const build = jobs.jobs.find(job => job.name === 'Validate the separate full Loop main app');
+            for (const name of ['Build the full app unsigned for Simulator', 'Package normal full Simulator startup with ad-hoc signing', 'Retain the compiled Simulator package for independent rechecking']) {
+              if (!build?.steps.some(step => step.name === name && step.conclusion === 'success')) throw new Error('Compiled package step did not pass: ' + name);
+            }
+            const {data: artifact} = await github.rest.actions.getArtifact({owner, repo, artifact_id: 12384444023});
+            if (artifact.expired || artifact.name !== 'loop-next-ai-simulator-94ffb564c891ae5e3355c250623dff4833a51022' || artifact.digest !== 'sha256:162bf61d964b43041ded4fbe20211f71fd7183974b4492cb963e5047b9ad8636') throw new Error('Compiled artifact identity/digest mismatch.');
+      - uses: actions/download-artifact@v4
+        with:
+          name: loop-next-ai-simulator-94ffb564c891ae5e3355c250623dff4833a51022
+          github-token: ${{ github.token }}
+          run-id: 39676604275
+          path: ${{ runner.temp }}/RetainedFullLoopInput
+      - name: Extract and verify the actual retained Simulator product
+        run: |
+          ditto -x -k "$RUNNER_TEMP/RetainedFullLoopInput/FullLoopSimulator.zip" "$RUNNER_TEMP/RetainedFullLoop"
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/verify_product.py \
+            --app "$RUNNER_TEMP/RetainedFullLoop/Loop.app" --simulator \
+            --source 94ffb564c891ae5e3355c250623dff4833a51022 --record "$RUNNER_TEMP/FullLoopRecheckProduct.json"
+      - name: Probe normal startup of the same compiled app
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/probe_startup.py \
+            --app "$RUNNER_TEMP/RetainedFullLoop/Loop.app" \
+            --output "$RUNNER_TEMP/FullLoopRetainedStartup" > "$RUNNER_TEMP/FullLoopRetainedStartup.log" 2>&1 || {
+              cat "$RUNNER_TEMP/FullLoopRetainedStartup.log"
+              exit 1
+            }
+          cat "$RUNNER_TEMP/FullLoopRetainedStartup.log"
+      - name: Record retained-runtime and verification-source provenance
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          directory = Path(os.environ['RUNNER_TEMP'])
+          info = json.loads((directory / 'FullLoopRecheckProduct.json').read_text())
+          info.update(verification_source=os.environ['GITHUB_SHA'], verification_run=int(os.environ['GITHUB_RUN_ID']),
+                      compiled_artifact_id=12384444023, compiled_run=39676604275, source_equivalence=True,
+                      simulator_zip_sha256=hashlib.file_digest((directory / 'RetainedFullLoopInput/FullLoopSimulator.zip').open('rb'), 'sha256').hexdigest())
+          (directory / 'FullLoopRetainedValidation.json').write_text(json.dumps(info, indent=2) + '\n')
+          print(json.dumps(info))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loop-next-ai-retained-validation-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/FullLoopRecheckProduct.json
+            ${{ runner.temp }}/FullLoopRetainedValidation.json
+            ${{ runner.temp }}/FullLoopRetainedStartup.log
+            ${{ runner.temp }}/FullLoopRetainedStartup
+          retention-days: 14
+      - name: Clean up the disposable retained-app Simulator
+        if: always()
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/probe_startup.py
+          --cleanup-only --output "$RUNNER_TEMP/FullLoopRetainedStartup"
+  full_loop_preflight:
+    name: Check the full-app packaging and signing tooling
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      (contains(github.event.head_commit.message, '[full-loop-prepared]') ||
+       contains(github.event.head_commit.message, '[full-loop-launch]') ||
+       contains(github.event.head_commit.message, '[full-loop-release-retained]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Check the distinct full-app tools and generate its normal project
+        run: |
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/prepare.rb
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/fastlane/Fastfile
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/verify_product_test.py
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/simulator_entitlements_test.py
+          python3 -m py_compile Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/*.py
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/prepare.rb
+  full_loop_archive:
+    name: Archive and upload the approved separate full main app
+    needs: [full_loop_validate, full_loop_recheck, full_loop_preflight, full_loop_current_group]
+    if: >-
+      always() && !cancelled() &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      needs.full_loop_preflight.result == 'success' &&
+      ((contains(github.event.head_commit.message, '[full-loop-launch]') && needs.full_loop_validate.result == 'success') ||
+       (contains(github.event.head_commit.message, '[full-loop-release-retained]') &&
+        needs.full_loop_recheck.result == 'success' && needs.full_loop_current_group.result == 'success'))
+    runs-on: macos-15-intel
+    timeout-minutes: 150
+    env:
+      FULL_VALIDATED_SOURCE: ${{ github.sha }}
+      FULL_VALIDATED_RUN: ${{ github.run_id }}
+      FULL_VALIDATION_RESULT: ${{ needs.full_loop_validate.result == 'success' && 'success' || needs.full_loop_recheck.result }}
+      FULL_RUNTIME_SOURCE: ${{ needs.full_loop_recheck.result == 'success' && '94ffb564c891ae5e3355c250623dff4833a51022' || github.sha }}
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Verify validated packaging source and protected configuration
+        run: |
+          test "$FULL_VALIDATION_RESULT" = success
+          test "$FULL_VALIDATED_SOURCE" = "$GITHUB_SHA"
+          test "$FULL_VALIDATED_RUN" = "$GITHUB_RUN_ID"
+          test "$(git rev-parse HEAD)" = "$FULL_VALIDATED_SOURCE"
+          git diff --exit-code "$FULL_VALIDATED_SOURCE"
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          bundle install
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/fastlane/Fastfile
+      - name: Generate the normal separate main app from the validated tools
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/prepare.rb
+          swift Prototypes/AIFoodRecognition/Integration/SideBySide/make_icon.swift Loop/Loop/MealPhotoFullTestAssets.xcassets
+      - name: Preserve the personal AI connection in the separate full app
+        env:
+          FOOD_TESTER_ACCESS_CODE: ${{ secrets.FOOD_TESTER_ACCESS_CODE }}
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review.py
+          --plist Loop/Loop/Info.plist
+      - name: Require its own group profile and sign with the existing certificate
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          TEAMID: ${{ secrets.TEAMID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios archive_candidate
+      - name: Verify the exported full app and record exact provenance
+        run: python3 Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop/record_candidate.py
+      - name: Upload the verified full candidate only to the existing separate test app
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+          APPROVED_FULL_TEST_UPLOAD: com.jhardorp.loopaiphototest
+        run: bundle exec fastlane ios upload_verified_candidate
+      - name: Retain the separate full-app archive and signing evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-next-ai-full-candidate-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/LoopNextAICandidate
+          if-no-files-found: warn
+          retention-days: 7
+  full_loop_setup:
+    name: Prepare only the separate full-Loop identifier
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[full-loop-setup]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Prepare the test identifier and inspect own app-group support
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide/FullLoop
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          TEAMID: ${{ secrets.TEAMID }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios prepare_identifier
+  check_app_record:
+    name: Resolve the isolated Apple app record
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      (contains(github.event.head_commit.message, '[sandbox-access-check]') ||
+       contains(github.event.head_commit.message, '[sandbox-candidate]') ||
+       contains(github.event.head_commit.message, '[sandbox-repair-record]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Check the record or correct only the empty separate app
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+          APPLE_APP_RECORD_ACTION: ${{ contains(github.event.head_commit.message, '[sandbox-repair-record]') && 'repair_app_record' || 'check_app_record' }}
+          APPROVED_SANDBOX_RECORD: com.jhardorp.loopaiphototest
+        run: bundle exec fastlane ios "$APPLE_APP_RECORD_ACTION"
+  upload_approved_candidate:
+    name: Upload the approved isolated build only
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[sandbox-upload-approved]')
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Require the successful validated candidate run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const {data: run} = await github.rest.actions.getWorkflowRun({owner, repo, run_id: 39637426976});
+            if (run.conclusion !== 'success' || run.head_sha !== '31b7bf86464c8033a3b5b6facf8df740600741dd' ||
+                run.head_branch !== 'migration/loop4-ai-photo' || run.path !== '.github/workflows/loop_ai_sandbox.yml') {
+              throw new Error('Candidate validation provenance mismatch');
+            }
+            const {data: artifact} = await github.rest.actions.getArtifact({owner, repo, artifact_id: 12364268218});
+            if (artifact.expired || artifact.workflow_run.id !== run.id ||
+                artifact.name !== 'loop-ai-separate-candidate-' + run.head_sha ||
+                artifact.digest !== 'sha256:91285461df9a1dcab7a72f184188ace6f496fb56162d06fa626bc51bfc53b980') {
+              throw new Error('Candidate artifact provenance mismatch');
+            }
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12364268218'
+          run-id: '39637426976'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/LoopAISandboxCandidate
+          merge-multiple: true
+      - name: Recheck the exact signed IPA before uploading
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          python3 Prototypes/AIFoodRecognition/Integration/SideBySide/verify_upload.py "$RUNNER_TEMP/LoopAISandboxCandidate"
+          bundle install
+          ruby -c Prototypes/AIFoodRecognition/Integration/SideBySide/fastlane/Fastfile
+      - name: Upload only Loop AI Test and check Apple processing
+        working-directory: Prototypes/AIFoodRecognition/Integration/SideBySide
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+          APPROVED_SANDBOX_UPLOAD: '0.1.0 (12)'
+        run: bundle exec fastlane ios upload_approved_candidate
+      - name: Retain upload and Apple processing status
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-ai-testflight-status-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/LoopAISandboxCandidate/VerifiedUpload.json
+            ${{ runner.temp }}/LoopAISandboxCandidate/UploadStatus.json
+          if-no-files-found: warn
+          retention-days: 14

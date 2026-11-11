@@ -1,0 +1,117 @@
+{
+  "runId": 42987376862,
+  "jobId": 130411671743,
+  "runUrl": "https://github.com/jhardorp/LoopWorkspace/actions/runs/42987376862",
+  "source": "8a1c55760584209dfd0d6184051b2bf5c69086e4",
+  "artifactId": 13840575467,
+  "guardTests": {
+    "passed": 7,
+    "failed": 0
+  },
+  "credentialRepair": {
+    "source": "8a1c55760584209dfd0d6184051b2bf5c69086e4",
+    "checkedAt": "2026-11-11T08:29:04.009Z",
+    "operation": "repair",
+    "providerVerified": true,
+    "providerHttpStatus": 200,
+    "secretUpdated": true,
+    "configurationUnchanged": true,
+    "appCodeChanged": false,
+    "issue": null,
+    "providerErrorCode": null,
+    "providerErrorType": null,
+    "cloudflareHttpStatus": 200
+  },
+  "descriptionVerification": {
+    "checkedAt": "2026-11-11T08:29:17.641Z",
+    "source": "8a1c55760584209dfd0d6184051b2bf5c69086e4",
+    "host": "https://loop-plus-meal-review.jan-1af.workers.dev",
+    "inputKind": "description",
+    "deploymentModified": false,
+    "appModified": false,
+    "personalMealDataSent": false,
+    "workerAnalysisRequests": 1,
+    "directProviderProbeRequests": 0,
+    "checks": [
+      {
+        "name": "worker_health",
+        "httpStatus": 200,
+        "ready": true,
+        "descriptionFeature": true,
+        "photoRefinementFeature": true
+      },
+      {
+        "name": "worker_binding_metadata",
+        "httpStatus": 200,
+        "providerSecretPresent": true,
+        "testerSecretPresent": true,
+        "modelIdentifierValid": true
+      },
+      {
+        "name": "repository_provider_model_access",
+        "httpStatus": 200,
+        "expectedModelReturned": true
+      },
+      {
+        "name": "worker_login",
+        "httpStatus": 200,
+        "validSessionReturned": true
+      },
+      {
+        "name": "synthetic_description_analysis",
+        "httpStatus": 200,
+        "validResponse": true,
+        "outcome": "estimate"
+      }
+    ],
+    "diagnosis": "service_healthy_for_synthetic_description",
+    "model": "gpt-4.1-2025-04-14"
+  },
+  "photoVerification": {
+    "checkedAt": "2026-11-11T08:29:23.946Z",
+    "source": "8a1c55760584209dfd0d6184051b2bf5c69086e4",
+    "host": "https://loop-plus-meal-review.jan-1af.workers.dev",
+    "inputKind": "photo",
+    "deploymentModified": false,
+    "appModified": false,
+    "personalMealDataSent": false,
+    "workerAnalysisRequests": 1,
+    "directProviderProbeRequests": 0,
+    "checks": [
+      {
+        "name": "worker_health",
+        "httpStatus": 200,
+        "ready": true,
+        "descriptionFeature": true,
+        "photoRefinementFeature": true
+      },
+      {
+        "name": "worker_binding_metadata",
+        "httpStatus": 200,
+        "providerSecretPresent": true,
+        "testerSecretPresent": true,
+        "modelIdentifierValid": true
+      },
+      {
+        "name": "repository_provider_model_access",
+        "httpStatus": 200,
+        "expectedModelReturned": true
+      },
+      {
+        "name": "worker_login",
+        "httpStatus": 200,
+        "validSessionReturned": true
+      },
+      {
+        "name": "synthetic_photo_analysis",
+        "httpStatus": 200,
+        "validResponse": true,
+        "outcome": "needsMoreInformation"
+      }
+    ],
+    "diagnosis": "service_healthy_for_synthetic_photo",
+    "model": "gpt-4.1-2025-04-14"
+  },
+  "phoneVerification": "pending_user_fresh_analysis",
+  "photoVerificationScope": "Blank synthetic JPEG verifies the photo request path, not food recognition accuracy."
+}

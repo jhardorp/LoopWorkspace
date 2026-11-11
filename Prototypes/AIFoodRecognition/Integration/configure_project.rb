@@ -13,15 +13,17 @@ unless reference
   reference.relative_path = '../Prototypes/AIFoodRecognition'
   project.root_object.package_references << reference
 end
-dependency = target.package_product_dependencies.find { |item| item.product_name == 'FoodRecognitionUI' }
+['FoodRecognitionUI', 'FoodRecognitionCore'].each do |product|
+dependency = target.package_product_dependencies.find { |item| item.product_name == product }
 unless dependency
   dependency = project.new(objects::XCSwiftPackageProductDependency)
   dependency.package = reference
-  dependency.product_name = 'FoodRecognitionUI'
+  dependency.product_name = product
   target.package_product_dependencies << dependency
   build_file = project.new(objects::PBXBuildFile)
   build_file.product_ref = dependency
   target.frameworks_build_phase.files << build_file
+end
 end
 project.save
 puts 'Linked the shared meal-review UI into the Loop app target.'

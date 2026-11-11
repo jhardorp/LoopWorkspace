@@ -18,7 +18,10 @@ export function parseRefinement(bytes, model, maximumPhotoBytes) {
       || photo.at(-2) !== 255 || photo.at(-1) !== 217 || photo.toString("base64") !== payload.imageBase64) {
     throw new Error("Invalid refinement photo");
   }
-  const context = payload.refinement;
+  return { photo, ...parseRefinementContext(payload.refinement, model) };
+}
+
+export function parseRefinementContext(context, model) {
   if (!keys(context, ["previousEstimate", "comments", "question"])
       || !Array.isArray(context.comments) || context.comments.length < 1 || context.comments.length > 20
       || !context.comments.every((comment) => typeof comment === "string" && comment.trim().length > 0 && textBytes(comment.trim()) <= 2048)
@@ -33,7 +36,7 @@ export function parseRefinement(bytes, model, maximumPhotoBytes) {
   }
   const { provenance, ...assessment } = previous;
   const validated = validateAssessment({ status: "estimate", reason: "", estimate: assessment }, model).estimate;
-  return { photo, previousEstimate: validated, comments: context.comments.map((comment) => comment.trim()), question: context.question };
+  return { previousEstimate: validated, comments: context.comments.map((comment) => comment.trim()), question: context.question };
 }
 
 export const refinementInstructions = `The user is correcting the estimate for this SAME meal photograph.

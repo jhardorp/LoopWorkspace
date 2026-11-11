@@ -1,0 +1,511 @@
+name: Check in-place Loop AI migration
+on:
+  push:
+    branches: ['migration/loop4-ai-photo']
+    paths:
+      - 'Prototypes/AIFoodRecognition/Integration/LiveUpdate/**'
+      - '.github/workflows/loop_ai_live_update.yml'
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [inspect_status, inspect_service, prepare_candidate, publish_update]
+        default: inspect_status
+        required: true
+      validated_source:
+        type: string
+        required: false
+      validation_run:
+        type: string
+        required: false
+      release_confirmation:
+        description: Owner authorization for the exact reviewed build 28 and description backend
+        type: string
+        required: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: loop-ai-in-place-${{ (contains(github.event.head_commit.message, '[live-update-status]') || inputs.operation == 'inspect_status' || inputs.operation == 'inspect_service') && 'metadata' || 'migration' }}
+  cancel-in-progress: false
+jobs:
+  production_status:
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      (contains(github.event.head_commit.message, '[live-update-status]') ||
+       (github.event_name == 'workflow_dispatch' && inputs.operation == 'inspect_status'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Inspect the existing Loop TestFlight app without changing it
+        working-directory: Prototypes/AIFoodRecognition/Integration/LiveUpdate
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: |
+          ruby -c fastlane/Fastfile
+          bundle exec fastlane ios inspect_production
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: existing-loop-testflight-status-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/LiveAppStatus.json
+          if-no-files-found: warn
+          retention-days: 14
+  inspect_description_service:
+    name: Prepare the description backend and inspect existing service without deployment
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'workflow_dispatch' && inputs.operation == 'inspect_service'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require the completed application and backend validation
+        env:
+          ACTIONS_READ_TOKEN: ${{ github.token }}
+          VALIDATED_SOURCE: ${{ inputs.validated_source }}
+          VALIDATION_RUN: ${{ inputs.validation_run }}
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+          python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/verify_validation.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test and bundle the description Worker without publishing
+        working-directory: Prototypes/AIFoodRecognition/Backend
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+          npm test
+          npx --no-install wrangler deploy --dry-run --outdir "$RUNNER_TEMP/LoopDescriptionWorker"
+      - name: Inspect current Worker identity, quota and server secret names
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/inspect_service.py
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - name: Check the prepared publication controls without publishing
+        run: |
+          python3 -m unittest discover -s Prototypes/AIFoodRecognition/Integration/NextUpdate -p '*_test.py'
+          ruby -c Prototypes/AIFoodRecognition/Integration/NextUpdate/fastlane/Fastfile
+          ruby -c Prototypes/AIFoodRecognition/Integration/NextUpdate/upload.fastlane.rb
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12936348558'
+          run-id: '40962608601'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/DescriptionBaseline
+      - name: Verify exact app/backend artifacts and unchanged deployed backend
+        env:
+          ACTIONS_READ_TOKEN: ${{ github.token }}
+          VALIDATED_SOURCE: '23c4cc427d09bc1f489b81b533e1bdf9c93634e0'
+          VALIDATION_RUN: '40886501697'
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/release.py
+          preflight_backend "$RUNNER_TEMP/DescriptionBaseline"
+      - name: Retain backend bundle and read-only comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: description-worker-candidate-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/LoopDescriptionWorker
+            ${{ runner.temp }}/DescriptionBackendCandidate.json
+            ${{ runner.temp }}/NextValidation.json
+          if-no-files-found: warn
+          retention-days: 7
+  publish_description_backend:
+    name: Publish the exact description backend after owner authorization
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'workflow_dispatch' && inputs.operation == 'publish_update' &&
+      inputs.release_confirmation == 'PUBLISH_LOOP_28_AND_TEXT_INPUT'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify protected production files
+        run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Prepare the exact tested Worker bundle
+        working-directory: Prototypes/AIFoodRecognition/Backend
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
+          npm test
+          npx --no-install wrangler deploy --dry-run --outdir "$RUNNER_TEMP/LoopDescriptionWorker"
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12936348558'
+          run-id: '40962608601'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/DescriptionBaseline
+      - name: Publish while preserving existing server secrets and shared quota
+        env:
+          ACTIONS_READ_TOKEN: ${{ github.token }}
+          VALIDATED_SOURCE: '23c4cc427d09bc1f489b81b533e1bdf9c93634e0'
+          VALIDATION_RUN: '40886501697'
+          OWNER_AUTHORIZED_UPDATE: ${{ inputs.release_confirmation }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/release.py
+          publish_backend "$RUNNER_TEMP/DescriptionBaseline"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: description-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/DescriptionDeployStatus.json
+            ${{ runner.temp }}/DescriptionBackendCandidate.json
+            ${{ runner.temp }}/NextValidation.json
+          if-no-files-found: warn
+          retention-days: 14
+  publish_next_app:
+    name: Upload the exact signed build 28 after backend readiness
+    needs: publish_description_backend
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'workflow_dispatch' && inputs.operation == 'publish_update' &&
+      inputs.release_confirmation == 'PUBLISH_LOOP_28_AND_TEXT_INPUT'
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Select the existing upload toolchain and verify protected configuration
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12928092541'
+          run-id: '40937665799'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/NextReleaseCandidate
+      - name: Recheck the original signature, identity, hash and source evidence
+        env:
+          ACTIONS_READ_TOKEN: ${{ github.token }}
+          VALIDATED_SOURCE: '23c4cc427d09bc1f489b81b533e1bdf9c93634e0'
+          VALIDATION_RUN: '40886501697'
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/release.py
+          verify_app "$RUNNER_TEMP/NextReleaseCandidate"
+      - name: Install existing upload tools and check lane syntax
+        run: |
+          bundle install
+          ruby -c Prototypes/AIFoodRecognition/Integration/NextUpdate/upload.fastlane.rb
+      - name: Upload the retained IPA and verify Apple internal testing readiness
+        working-directory: Prototypes/AIFoodRecognition/Integration/NextUpdate
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          OWNER_AUTHORIZED_UPDATE: ${{ inputs.release_confirmation }}
+          BACKEND_RELEASE_RESULT: ${{ needs.publish_description_backend.result }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios publish_candidate
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loop-build-28-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/NextReleaseCandidate/VerifiedNextRelease.json
+            ${{ runner.temp }}/NextReleaseCandidate/NextUploadStatus.json
+            ${{ runner.temp }}/NextValidation.json
+          if-no-files-found: warn
+          retention-days: 14
+  prepare_next_candidate:
+    name: Prepare a signed candidate from a completed validation run
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'workflow_dispatch' && inputs.operation == 'prepare_candidate'
+    # The standard arm64 pool can fail allocation before any step starts.
+    # GitHub's standard Intel image contains the same pinned Xcode build.
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Select the validated Xcode version
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          python3 - <<'PY'
+          import subprocess
+          actual = subprocess.check_output(['xcodebuild', '-version'], text=True).strip()
+          assert actual == 'Xcode 26.3\nBuild version 17C529', actual
+          print(actual)
+          PY
+      - name: Verify pinned sources and protected production files
+        run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - name: Check validation reuse guard and completed run
+        env:
+          ACTIONS_READ_TOKEN: ${{ github.token }}
+          VALIDATED_SOURCE: ${{ inputs.validated_source }}
+          VALIDATION_RUN: ${{ inputs.validation_run }}
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/verify_validation_test.py
+          python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/verify_validation.py
+      - name: Install pinned tools
+        run: bundle install
+      - name: Configure the normal app with reviewed meal input
+        run: |
+          python3 Prototypes/AIFoodRecognition/Integration/apply.py
+          bundle exec ruby Prototypes/AIFoodRecognition/Integration/configure_project.rb
+          python3 Prototypes/AIFoodRecognition/Integration/configure_scheme.py
+          ruby -c Prototypes/AIFoodRecognition/Integration/NextUpdate/fastlane/Fastfile
+      - name: Configure the existing personal login
+        env:
+          FOOD_TESTER_ACCESS_CODE: ${{ secrets.FOOD_TESTER_ACCESS_CODE }}
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Distribution/configure_meal_review.py
+          --plist Loop/Loop/Info.plist
+      - name: Archive using existing read-only signing
+        working-directory: Prototypes/AIFoodRecognition/Integration/NextUpdate
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          TEAMID: ${{ secrets.TEAMID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_READONLY: 'true'
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios prepare_candidate
+      - name: Verify package signature and unchanged normal app identity
+        run: python3 Prototypes/AIFoodRecognition/Integration/NextUpdate/record_candidate.py
+      - name: Retain the unuploaded signed candidate and validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-loop-candidate-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            Loop.ipa
+            NextCandidate.json
+            ${{ runner.temp }}/NextValidation.json
+            buildlog
+          if-no-files-found: warn
+          retention-days: 7
+  migration:
+    if: >-
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      !contains(github.event.head_commit.message, '[live-update-status]') &&
+      !contains(github.event.head_commit.message, '[live-update-upload]') &&
+      contains(github.event.head_commit.message, '[live-update-check]')
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+          fetch-depth: 0
+      - name: Select pinned Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+      - name: Verify source pins and protected production configuration
+        run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - name: Add disposable migration regressions
+        run: python3 Prototypes/AIFoodRecognition/Integration/LiveUpdate/prepare_checks.py
+      - name: Run upstream and production-format migration tests
+        run: |
+          set -o pipefail
+          device=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')
+          xcodebuild -workspace LoopWorkspace.xcworkspace -scheme LoopKitMigration \
+            -destination "platform=iOS Simulator,id=$device" -onlyUsePackageVersionsFromResolvedFile \
+            -derivedDataPath "$RUNNER_TEMP/MigrationChecks" \
+            -resultBundlePath "$RUNNER_TEMP/ProductionMigration.xcresult" \
+            -only-testing:LoopKitTests/PersistenceControllerMigrationTests \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= test \
+            > "$RUNNER_TEMP/ProductionMigration.log" 2>&1 || {
+              tail -n 140 "$RUNNER_TEMP/ProductionMigration.log"
+              exit 1
+            }
+          tail -n 40 "$RUNNER_TEMP/ProductionMigration.log"
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          log = (Path(os.environ['RUNNER_TEMP']) / 'ProductionMigration.log').read_text()
+          passed = set(re.findall(r"PersistenceControllerMigrationTests (test\w+)\]' passed", log))
+          assert len(passed) == 4, f'Expected four actual migration cases, got {passed}'
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12332699181'
+          run-id: '39565198453'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/ExistingIdentityCandidate
+          merge-multiple: true
+      - name: Inspect existing signed candidate metadata
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, plistlib, zipfile
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'ExistingIdentityCandidate'
+          record = json.loads((root / 'MigrationCandidate.json').read_text())
+          ipa = root / 'Loop.ipa'
+          assert record['source'] == 'e768ff50dc335671f479543ccd5f3a525c733c20'
+          assert record['ipa_sha256'] == hashlib.file_digest(ipa.open('rb'), 'sha256').hexdigest()
+          with zipfile.ZipFile(ipa) as archive:
+              info = plistlib.loads(archive.read('Payload/Loop.app/Info.plist'))
+              assert info['CFBundleIdentifier'] == 'com.279LYMG57A.loopkit.Loop'
+              assert info['AppGroupIdentifier'] == 'group.com.279LYMG57A.loopkit.LoopGroup'
+              assert info['CFBundleShortVersionString'] == '3.15.2' and info['CFBundleVersion'] == '27'
+              assert 'UIApplicationSceneManifest' in info
+              assert not any(key.startswith('MealPhotoSandbox') or key.startswith('MealPhotoFullApp') for key in info)
+              assert any(name.startswith('Payload/Loop.app/Watch/') for name in archive.namelist())
+              assert any('.appex/Info.plist' in name for name in archive.namelist())
+          print('LIVE_CANDIDATE: ' + json.dumps(record))
+          PY
+      - name: Verify the unchanged IPA signature and complete app identity
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/LiveUpdate/verify_candidate.py
+          "$RUNNER_TEMP/ExistingIdentityCandidate"
+      - name: Retain migration test and exact candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-in-place-migration-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ProductionMigration.log
+            ${{ runner.temp }}/ProductionMigration.xcresult
+            ${{ runner.temp }}/ExistingIdentityCandidate/MigrationCandidate.json
+            ${{ runner.temp }}/ExistingIdentityCandidate/VerifiedLiveCandidate.json
+          if-no-files-found: warn
+          retention-days: 14
+  upload_retained:
+    name: Publish the owner-authorized update under the existing Loop identity
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[live-update-upload]')
+    runs-on: macos-15
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require successful migration and original build evidence
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {data: migration} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: 39747429039});
+            if (migration.head_sha !== '0ce05a235c26b0401535a3188eb7650293598f91' ||
+                migration.conclusion !== 'success' || migration.head_branch !== 'migration/loop4-ai-photo') {
+              throw new Error('The four migration tests and signature verification must pass before upload.');
+            }
+            const {data: jobs} = await github.rest.actions.listJobsForWorkflowRun({...context.repo, run_id: migration.id, filter: 'latest', per_page: 100});
+            const job = jobs.jobs.find(job => job.name === 'migration');
+            for (const name of ['Run upstream and production-format migration tests', 'Verify the unchanged IPA signature and complete app identity']) {
+              if (job?.conclusion !== 'success' || !job.steps.some(step => step.name === name && step.conclusion === 'success')) {
+                throw new Error('Missing migration/signature evidence: ' + name);
+              }
+            }
+            const {data: original} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: 39565198453});
+            if (original.head_sha !== 'e768ff50dc335671f479543ccd5f3a525c733c20' || original.conclusion !== 'success') {
+              throw new Error('The exact signed candidate must retain its original successful validation.');
+            }
+            const {data: artifact} = await github.rest.actions.getArtifact({...context.repo, artifact_id: 12332699181});
+            if (artifact.workflow_run.id !== original.id || artifact.expired || artifact.size_in_bytes !== 66740987 ||
+                artifact.digest !== 'sha256:85ac83f1adbb4ffee66b278ce3326dcb22ef91fe407cbdfe0044536ffe2d08b1') {
+              throw new Error('The retained signed artifact differs from the validated candidate.');
+            }
+            for (const [branch, sha] of [['feature/ai-food-recognition', 'cb4f6b1821489a27b06a36e378b0a7e5267bcbf1'], ['main', '548b33245198eaae165c094c9c68fe333cb69c05']]) {
+              const {data: ref} = await github.rest.git.getRef({...context.repo, ref: 'heads/' + branch});
+              if (ref.object.sha !== sha) throw new Error('Protected branch changed; inspect before publishing: ' + branch);
+            }
+      - name: Verify migration tests remain unchanged since the successful run
+        run: >-
+          git diff --exit-code 0ce05a235c26b0401535a3188eb7650293598f91 HEAD --
+          Prototypes/AIFoodRecognition/Integration/LiveUpdate/MigrationTests.swift
+          Prototypes/AIFoodRecognition/Integration/LiveUpdate/LegacyStoredSettings.json
+          Prototypes/AIFoodRecognition/Integration/LiveUpdate/prepare_checks.py
+      - name: Verify pinned sources and protected production files
+        run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12332699181'
+          run-id: '39565198453'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/ExistingIdentityCandidate
+          merge-multiple: true
+      - name: Verify the exact originally signed app without rebuilding
+        run: >-
+          python3 Prototypes/AIFoodRecognition/Integration/LiveUpdate/verify_candidate.py
+          "$RUNNER_TEMP/ExistingIdentityCandidate"
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Upload the verified update and check Apple processing
+        working-directory: Prototypes/AIFoodRecognition/Integration/LiveUpdate
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+          APPROVED_LIVE_UPDATE: com.279LYMG57A.loopkit.Loop
+          MIGRATION_CHECKS_RESULT: success
+        run: |
+          ruby -c fastlane/Fastfile
+          bundle exec fastlane ios inspect_production
+          bundle exec fastlane ios upload_verified_live_candidate
+      - name: Retain the unchanged package and upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: existing-loop-update-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ExistingIdentityCandidate/Loop.ipa
+            ${{ runner.temp }}/ExistingIdentityCandidate/MigrationCandidate.json
+            ${{ runner.temp }}/ExistingIdentityCandidate/VerifiedLiveCandidate.json
+            ${{ runner.temp }}/ExistingIdentityCandidate/LiveUploadStatus.json
+            ${{ runner.temp }}/LiveAppStatus.json
+          if-no-files-found: warn
+          retention-days: 14

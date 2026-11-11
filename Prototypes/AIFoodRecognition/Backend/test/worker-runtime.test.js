@@ -17,7 +17,7 @@ test("Cloudflare runtime sends the provider request and rejects redirects withou
     modules: [{
       type: "ESModule", path: `${root}runtime-test-entry.js`,
       contents: 'export { default, PrototypeQuota } from "./src/worker.js";',
-    }, ...["worker.js", "auth.js", "contract.js", "refinement.js"].map((name) => ({
+    }, ...["worker.js", "auth.js", "contract.js", "refinement.js", "description.js"].map((name) => ({
       type: "ESModule", path: `${root}src/${name}`,
       contents: readFileSync(new URL(`../src/${name}`, import.meta.url), "utf8"),
     }))],
@@ -72,5 +72,16 @@ test("Cloudflare runtime sends the provider request and rejects redirects withou
     const context = JSON.parse(providerBodies.at(-1).input[0].content[0].text);
     assert.deepEqual(context.comments, ["Two slices"]);
     assert.equal(providerBodies.at(-1).input[0].content[1].image_url, "data:image/jpeg;base64,/9j/2Q==");
+    for (const refinement of [undefined, { previousEstimate, comments: ["Two tablespoons"], question: "" }]) {
+      const described = await runtime.dispatchFetch(`${origin}/v1/describe`, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ description: "one tablespoon of honey", refinement }),
+      });
+      assert.equal(described.status, 200);
+      const content = providerBodies.at(-1).input[0].content;
+      assert.equal(content.length, 1);
+      assert.equal(content[0].type, "input_text");
+      assert.equal(JSON.parse(content[0].text).description, "one tablespoon of honey");
+    }
   } finally { await runtime.dispose(); }
 });

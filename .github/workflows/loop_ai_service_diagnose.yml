@@ -1,0 +1,97 @@
+name: Check Loop AI service
+on:
+  push:
+    branches: ['migration/loop4-ai-photo']
+    paths:
+      - '.github/workflows/loop_ai_service_diagnose.yml'
+      - 'Prototypes/AIFoodRecognition/Integration/NextUpdate/diagnose_service.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: loop-ai-service-diagnosis
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      (github.event_name == 'workflow_dispatch' ||
+       contains(github.event.head_commit.message, '[ai-service-check]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify protected app and backend configuration
+        run: python3 Prototypes/AIFoodRecognition/Integration/verify_migration.py
+      - name: Check diagnostic syntax
+        run: node --check Prototypes/AIFoodRecognition/Integration/NextUpdate/diagnose_service.mjs
+      - name: Generate a synthetic JPEG without using a personal photo
+        run: |
+          npm install --prefix "$RUNNER_TEMP/LoopPhotoCheck" --no-save --no-package-lock --no-audit --no-fund --ignore-scripts jpeg-js@0.4.4
+          node <<'JS'
+          const fs = require("node:fs");
+          const jpeg = require(process.env.RUNNER_TEMP + "/LoopPhotoCheck/node_modules/jpeg-js");
+          const image = { width: 256, height: 256, data: Buffer.alloc(256 * 256 * 4, 255) };
+          fs.writeFileSync(process.env.RUNNER_TEMP + "/LoopSyntheticPhoto.jpg", jpeg.encode(image, 60).data);
+          JS
+      - name: Check existing service and one synthetic meal without deployment
+        env:
+          AI_DIAGNOSTIC_INPUT: 'photo'
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FOOD_OPENAI_API_KEY: ${{ secrets.FOOD_OPENAI_API_KEY }}
+          FOOD_TESTER_ACCESS_CODE: ${{ secrets.FOOD_TESTER_ACCESS_CODE }}
+        run: node Prototypes/AIFoodRecognition/Integration/NextUpdate/diagnose_service.mjs
+      - name: Retain sanitized diagnosis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-ai-service-diagnosis-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/AIServiceDiagnostic.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  app_status:
+    name: Inspect the current Loop TestFlight versions without changing distribution
+    if: >-
+      github.repository == 'jhardorp/LoopWorkspace' &&
+      github.ref == 'refs/heads/migration/loop4-ai-photo' &&
+      (github.event_name == 'workflow_dispatch' ||
+       contains(github.event.head_commit.message, '[ai-app-status]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Read existing Apple build and internal testing status
+        working-directory: Prototypes/AIFoodRecognition/Integration/LiveUpdate
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/Gemfile
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+          FASTLANE_SKIP_UPDATE_CHECK: 'true'
+          FASTLANE_HIDE_CHANGELOG: 'true'
+        run: bundle exec fastlane ios inspect_production
+      - name: Retain Apple status without credentials or tester details
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loop-ai-app-status-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/LiveAppStatus.json
+          if-no-files-found: warn
+          retention-days: 7

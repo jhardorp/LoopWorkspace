@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Apply the reviewed overlay only to this workspace's pinned Loop source."""
 import subprocess
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 LOOP = ROOT / "Loop"
-PIN = "c30b5c89b1dc4151628f33f1384dd4796eaeeec2"
+PIN = json.loads(Path(__file__).with_name("upstream-lock.json").read_text())["submodules"]["Loop"]
 
 if subprocess.check_output(["git", "-C", str(LOOP), "rev-parse", "HEAD"], text=True).strip() != PIN:
     raise SystemExit("Loop source pin changed. Rebase and validate the meal-review overlay before building.")

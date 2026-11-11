@@ -1,0 +1,27 @@
+require 'base64'
+
+import File.join(ENV.fetch('GITHUB_WORKSPACE'), 'fastlane', 'Fastfile')
+
+platform :ios do
+  desc 'Archive an experimental migration candidate without uploading or installing'
+  lane :archive_candidate do
+    UI.user_error!('Migration Actions branch required') unless
+      ENV['GITHUB_ACTIONS'] == 'true' && ENV['GITHUB_REF'] == 'refs/heads/migration/loop4-ai-photo'
+    workspace = ENV.fetch('GITHUB_WORKSPACE')
+    actual_sha = IO.popen(['git', '-C', workspace, 'rev-parse', 'HEAD'], &:read).strip
+    UI.user_error!('Candidate differs from validated source') unless actual_sha == ENV.fetch('MIGRATION_CANDIDATE_SHA')
+    main = File.read(File.join(workspace, 'Loop', 'Loop', 'main.swift'))
+    UI.user_error!('Cannot archive the generated test host') unless
+      main.include?('NSStringFromClass(AppDelegate.self)') && !main.include?('MealPhotoAdapterTestAppDelegate')
+
+    # The existing signing configuration remains unchanged. Never create, renew or
+    # revoke production certificates/profiles from the experimental archive lane.
+    ENV['MATCH_READONLY'] = 'true'
+    ENV['GYM_XCARGS'] = '-onlyUsePackageVersionsFromResolvedFile'
+    authorization = Base64.strict_encode64("#{ENV.fetch('GITHUB_REPOSITORY_OWNER')}:#{ENV.fetch('GH_PAT')}")
+    puts "::add-mask::#{authorization}"
+    Dir.chdir(File.join(workspace, 'fastlane')) { build_loop }
+    UI.user_error!('Expected signed candidate archive is missing') unless File.file?(File.join(workspace, 'Loop.ipa'))
+    UI.success('Experimental candidate archived using the existing app identity. It must not replace the working Loop. No TestFlight upload was requested.')
+  end
+end

@@ -11,6 +11,7 @@ public struct FoodRecognitionView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let startsWithCamera: Bool
     private let startsWithPhotoLibrary: Bool
+    private let startsWithDescription: Bool
     private let onUseMeal: (@MainActor (ReviewedMeal) -> Bool)?
     @State private var startedCamera = false
     @State private var showCamera = false
@@ -19,15 +20,19 @@ public struct FoodRecognitionView: View {
     @State private var cameraError: String?
     @State private var requestingCamera = false
     @State private var transferError: String?
+    @State private var showDescription = false
+    @State private var mealDescription = ""
     @FocusState private var commentFocused: Bool
+    @FocusState private var descriptionFocused: Bool
     @State private var manualCarbs = ""
     @State private var manualMinutes = "180"
     @State private var manualFood = ""
     @State private var mealTime = Date()
 
-    public init(startsWithCamera: Bool = false, startsWithPhotoLibrary: Bool = false, onUseMeal: (@MainActor (ReviewedMeal) -> Bool)? = nil) {
+    public init(startsWithCamera: Bool = false, startsWithPhotoLibrary: Bool = false, startsWithDescription: Bool = false, onUseMeal: (@MainActor (ReviewedMeal) -> Bool)? = nil) {
         self.startsWithCamera = startsWithCamera
         self.startsWithPhotoLibrary = startsWithPhotoLibrary
+        self.startsWithDescription = startsWithDescription
         self.onUseMeal = onUseMeal
     }
 
@@ -101,25 +106,25 @@ public struct FoodRecognitionView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             model.resume()
         }
-        .onAppear { model.resume(); startCameraIfRequested() }
-        .onChange(of: model.canUseAI) { _ in startCameraIfRequested() }
+        .onAppear { model.resume(); startInputIfRequested() }
+        .onChange(of: model.canUseAI) { _ in startInputIfRequested() }
     }
 
     private var title: String {
         if case .reviewing = model.state { return model.mode == .demo ? "Review Meal · Demo" : "Review Meal · AI" }
-        return onUseMeal == nil ? "Loop+ Meal Review" : "Meal photo review"
+        return onUseMeal == nil ? "Loop+ Meal Review" : "Meal review"
     }
 
     private var entry: some View {
         Form {
             if onUseMeal == nil { Section("Recognition") {
                 Picker("Provider", selection: $model.mode) {
-                    Text("OpenAI photo analysis").tag(RecognitionMode.openAI)
+                    Text("OpenAI meal analysis").tag(RecognitionMode.openAI)
                     Text("Mock demo").tag(RecognitionMode.demo)
                 }
                 .disabled(model.state == .estimating || model.connecting)
             } }
-            Section(onUseMeal == nil ? "Meal" : "Meal photo") {
+            Section("Meal") {
                 if onUseMeal == nil {
                     TextField("Amount consumed (g)", text: $manualCarbs).keyboardType(.decimalPad)
                     DatePicker("Time", selection: $mealTime)
@@ -136,7 +141,16 @@ public struct FoodRecognitionView: View {
                 }
                 .accessibilityIdentifier("chooseMealPhoto")
                 .disabled(model.state == .estimating || (model.mode == .openAI && !model.canUseAI))
+                Button {
+                    showDescription = true
+                    descriptionFocused = true
+                } label: {
+                    Label("Describe meal", systemImage: "text.bubble")
+                }
+                .accessibilityIdentifier("describeMeal")
+                .disabled(model.state == .estimating)
             }
+            if showDescription { descriptionSection }
             if model.mode == .demo { Section {
                 Picker("Demo result", selection: $model.scenario) {
                     ForEach(MockScenario.allCases, id: \.self) { scenario in
@@ -160,19 +174,37 @@ public struct FoodRecognitionView: View {
         switch model.state {
         case .estimating:
             Section {
-                ProgressView(model.mode == .demo ? "Preparing mock estimate…" : "Analyzing current meal photo…")
+                ProgressView(model.mode == .demo ? "Preparing mock estimate…" : "Analyzing meal…")
                 Button("Cancel estimate", role: .cancel) { model.clear() }
             }
         case .failed(let error):
             Section("Estimate unavailable") {
                 Text(model.errorMessage(error))
-                Text("Retake the photo to retry. Your manual preview remains editable.")
+                Text("Choose a new photo or edit the meal description to try again.")
                     .font(.footnote)
             }
         case .needsMoreInformation(let reason):
             Section("More information needed") { Text(reason) }
         case .idle, .reviewing:
             EmptyView()
+        }
+    }
+
+    private var descriptionSection: some View {
+        Section("Meal description") {
+            multilineField("For example: one tablespoon of honey", text: $mealDescription)
+                .focused($descriptionFocused)
+                .accessibilityIdentifier("mealDescriptionInput")
+                .disabled(model.state == .estimating)
+            Button("Analyze description") {
+                descriptionFocused = false
+                transferError = nil
+                model.analyzeDescription(mealDescription)
+            }
+            .accessibilityIdentifier("analyzeMealDescription")
+            .disabled(model.state == .estimating || (try? MealDescription(mealDescription)) == nil || (model.mode == .openAI && !model.canUseAI))
+            Text("Include the food and amount. Your description is sent to OpenAI for analysis; no photo is needed.")
+                .font(.footnote).foregroundColor(.secondary)
         }
     }
 
@@ -199,7 +231,7 @@ public struct FoodRecognitionView: View {
                     .accessibilityIdentifier("reviewCarbohydrates")
                 labeledField("Absorption", unit: "min", binding: model.binding(for: \.absorptionMinutesText, default: ""))
                     .accessibilityIdentifier("reviewAbsorption")
-                TextField("Meal notes", text: model.binding(for: \.mealNotes, default: ""))
+                multilineField("Meal notes", text: model.binding(for: \.mealNotes, default: ""))
                 if estimate.confidence == .low {
                     Toggle("Reviewed estimate", isOn: model.binding(for: \.acknowledgesUncertainty, default: false))
                 }
@@ -239,6 +271,9 @@ public struct FoodRecognitionView: View {
                 Image(uiImage: photo).resizable().scaledToFit().frame(maxHeight: 180)
                     .accessibilityLabel("Current meal photograph")
             }.listRowInsets(reviewRowInsets) }
+            if let description = model.sourceDescription { Section("Meal description") {
+                Text(description).fixedSize(horizontal: false, vertical: true)
+            }.listRowInsets(reviewRowInsets) }
             Section(model.mode == .demo ? "Example foods and portions" : "Foods and estimated portions") {
                 ForEach(Array(estimate.foods.enumerated()), id: \.offset) { _, food in
                     VStack(alignment: .leading, spacing: 3) {
@@ -255,7 +290,7 @@ public struct FoodRecognitionView: View {
             .listRowInsets(reviewRowInsets)
             Section("Explanation") {
                 if model.mode == .openAI {
-                    Text("Nutrition is inferred from the photo, not checked against a nutrition database. Total carbohydrate includes fiber; check ingredients, portions and nutrition labels.")
+                    Text("Nutrition is inferred from your meal input, not checked against a nutrition database. Total carbohydrate includes fiber; check ingredients, portions and nutrition labels.")
                         .font(.footnote).foregroundColor(.secondary)
                 }
                 Text(estimate.confidence == .low ? "Low confidence — confirm ingredients and portion size." : "Moderate confidence — manual verification required.")
@@ -268,7 +303,7 @@ public struct FoodRecognitionView: View {
             Section("Review details") {
                 Text("Enter 0–250 g and 30–480 minutes. These are prototype bounds, not recommended treatment values.")
                     .font(.footnote).foregroundColor(.secondary)
-                Button("Discard photo and review", role: .destructive) { discard() }
+                Button("Discard meal and review", role: .destructive) { discard() }
             }
             .listRowInsets(reviewRowInsets)
         }
@@ -331,8 +366,17 @@ public struct FoodRecognitionView: View {
                     }
                 }
             }
-            Text("AI uses this photo and your comments to revise the result. Each update uses one AI request.")
+            Text("AI uses your meal input and comments to revise the result. Each update uses one AI request.")
                 .font(.footnote).foregroundColor(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func multilineField(_ label: String, text: Binding<String>) -> some View {
+        if #available(iOS 16.0, *) {
+            TextField(label, text: text, axis: .vertical).lineLimit(1...6)
+        } else {
+            TextField(label, text: text)
         }
     }
 
@@ -370,6 +414,8 @@ public struct FoodRecognitionView: View {
 
     private func discard() {
         model.clear()
+        mealDescription = ""
+        descriptionFocused = false
         transferError = nil
         manualCarbs = ""
         manualMinutes = "180"
@@ -415,8 +461,15 @@ public struct FoodRecognitionView: View {
         }
     }
 
-    private func startCameraIfRequested() {
-        guard startsWithCamera || startsWithPhotoLibrary, !startedCamera, model.canUseAI else { return }
+    private func startInputIfRequested() {
+        guard startsWithCamera || startsWithPhotoLibrary || startsWithDescription, !startedCamera else { return }
+        if startsWithDescription {
+            startedCamera = true
+            showDescription = true
+            descriptionFocused = true
+            return
+        }
+        guard model.canUseAI else { return }
         startedCamera = true
         if startsWithPhotoLibrary { openPhotoLibrary() }
         else { openCamera() }
@@ -434,7 +487,7 @@ public struct FoodRecognitionView: View {
     private var connection: some View {
         Section("AI connection") {
             if model.hasPreconfiguredLogin {
-                Label(model.canUseAI ? "AI photo analysis ready" : "Preparing AI photo analysis", systemImage: model.canUseAI ? "checkmark.circle" : "arrow.triangle.2.circlepath")
+                Label(model.canUseAI ? "AI meal analysis ready" : "Preparing AI meal analysis", systemImage: model.canUseAI ? "checkmark.circle" : "arrow.triangle.2.circlepath")
             } else if model.hasSavedLogin {
                 Label("Login saved on this iPhone", systemImage: "checkmark.circle")
                 Text("Your connection renews automatically. You can photograph meals without entering your password again.")
@@ -463,7 +516,7 @@ public struct FoodRecognitionView: View {
             } else if case .failed(.authenticationRequired) = model.state, model.hasSavedLogin || model.hasPreconfiguredLogin {
                 Button("Retry connection") { model.resume() }.disabled(model.connecting)
             }
-            Text("OpenAI requests consume API credits. The prototype backend allows up to 1,000 photos per UTC day and 60 per minute. Failed provider requests also count; there are no automatic retries.")
+            Text("OpenAI requests consume API credits. Photos, descriptions and refinements share a limit of 1,000 requests per UTC day and 60 per minute. Failed provider requests also count; there are no automatic retries.")
                 .font(.footnote).foregroundColor(.secondary)
             Text("Captured meal photos are analyzed automatically by OpenAI.")
                 .font(.footnote).foregroundColor(.secondary)

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Context for this photo only; discarded with its in-memory review.
+/// Context for this meal only; discarded with its in-memory review.
 public struct MealRefinement: Codable, Equatable, Sendable {
     public static let maximumComments = 20
     public static let maximumCommentBytes = 2048
